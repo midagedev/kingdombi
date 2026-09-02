@@ -99,6 +99,7 @@ style.textContent = `
   #heat i { width:0; }
   #heat i.hot { background: var(--red); }
   #title, #end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
+  #end { background: rgba(0,0,0,.76); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   #title .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
   #title .t1 { font: 200 84px/1 var(--serif); letter-spacing:.02em; color: var(--ink); }
   #title .rule { width: 28px; height:1px; background: var(--red); margin: 26px 0 24px; }
