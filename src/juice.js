@@ -1,9 +1,9 @@
-// 타격감·바이럴 루프(DOM/CSS, GPU 비용 0): 낙관 스탬프, 연쇄 등급, 배너, 전적 카드 + 공유(텍스트/PNG), 최고 기록.
+// 타격감·바이럴 루프(DOM/CSS, GPU 비용 0): 낙관 스탬프, 연쇄 등급(=점수 배율), 배너, 점수 팝, 전적 카드(점수·등급·명예의 전당) + 공유.
 const CSS = `
   #stamp { position:absolute; left:50%; top:36%; transform:translate(-50%,-50%); font: 200 min(30vw, 190px)/1 var(--serif); color: var(--ink); opacity:0; pointer-events:none; }
   #stamp.slam { animation: slam .7s cubic-bezier(.16,.9,.2,1) forwards; }
   @keyframes slam { 0% { opacity:0; transform:translate(-50%,-50%) scale(1.25);} 20% { opacity:.92; transform:translate(-50%,-50%) scale(1);} 100% { opacity:0; transform:translate(-50%,-50%) scale(.97);} }
-  #combo { position:absolute; right:16px; top: calc(max(env(safe-area-inset-top), 14px) + 62px); text-align:right; opacity:0; transition: opacity .3s; }
+  #combo { position:absolute; right:16px; top: calc(max(env(safe-area-inset-top), 14px) + 78px); text-align:right; opacity:0; transition: opacity .3s; }
   #combo b { display:block; font: 300 22px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--violet); }
   #combo span { display:block; margin-top:3px; font: 300 10px/1 var(--serif); letter-spacing:.5em; opacity:.6; }
   #combo.gold b { color:#e6c87a; }
@@ -12,32 +12,45 @@ const CSS = `
   @keyframes pop { 0% { transform: scale(1.35);} 100% { transform: scale(1);} }
   #banner { position:absolute; left:50%; top:20%; transform:translateX(-50%); font: 300 12px/1 var(--serif); letter-spacing:.45em; color: var(--ink); opacity:0; transition: opacity .5s; white-space:nowrap; border-bottom: 1px solid var(--red); padding-bottom: 8px; }
   #banner.on { opacity:.9; }
-  #end .card { text-align:center; }
-  #end .card h2 { margin:0 0 18px; font: 200 46px/1.15 var(--serif); color: var(--ink); letter-spacing:.02em; }
-  #end .card .rec { font: 300 10px/1 var(--mono); letter-spacing:.5em; color:#e6c87a; margin-bottom: 26px; }
+  #pops { position:absolute; right:16px; top: calc(max(env(safe-area-inset-top), 14px) + 120px); text-align:right; pointer-events:none; }
+  #pops div { font: 300 14px/1.3 var(--mono); color:#e6c87a; animation: rise .9s ease-out forwards; }
+  #pops div span { font-family: var(--serif); margin-left: 6px; opacity:.8; }
+  @keyframes rise { 0% { opacity:0; transform: translateY(8px);} 15% { opacity:1;} 100% { opacity:0; transform: translateY(-22px);} }
+  #end .card { text-align:center; max-width: 86vw; }
+  #end .card h2 { margin:0 0 10px; font: 200 40px/1.15 var(--serif); color: var(--ink); letter-spacing:.02em; }
+  #end .card .score { font: 300 52px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing:.02em; color: var(--ink); }
+  #end .card .score b { font: 200 44px/1 var(--serif); color: var(--red); margin-left: 14px; vertical-align: 6px; }
+  #end .card .rec { font: 300 10px/1 var(--mono); letter-spacing:.5em; color:#e6c87a; margin: 14px 0 22px; }
   #end .card .rec.muted { color: rgba(233,230,223,.4); }
-  #end .stats { display:grid; grid-template-columns: repeat(4, auto); gap: 0 22px; margin: 0 0 34px; justify-content:center; }
+  #end .stats { display:grid; grid-template-columns: repeat(4, auto); gap: 0 20px; margin: 0 0 22px; justify-content:center; }
   #end .stats div { font: 300 9px/1 var(--serif); letter-spacing:.4em; opacity:.55; }
-  #end .stats div b { display:block; margin-bottom:8px; font: 300 26px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); letter-spacing:0; opacity:1; }
+  #end .stats div b { display:block; margin-bottom:8px; font: 300 22px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); letter-spacing:0; opacity:1; }
   #end .stats div.red b { color: var(--red); }
-  #end .btns { display:flex; gap:28px; justify-content:center; pointer-events:auto; }
+  #end .hs { margin: 0 auto 22px; font: 300 11px/1.9 var(--mono); letter-spacing:.12em; opacity:.8; text-align:left; display:inline-block; white-space:pre; }
+  #end .hs div.me { color:#e6c87a; }
+  #end .hs input { width: 3.2em; background:transparent; border:0; border-bottom:1px solid var(--red); color:#e6c87a; font: inherit; text-transform: uppercase; text-align:center; outline:0; pointer-events:auto; }
+  #end .btns { display:flex; gap:26px; justify-content:center; pointer-events:auto; }
   #end button { font: 300 12px/1 var(--serif); letter-spacing:.3em; padding: 10px 2px; background:transparent; color: var(--ink); border:0; border-bottom: 1px solid rgba(233,230,223,.35); cursor:pointer; }
   #end button:first-child { border-bottom-color: var(--red); }
-  #end .hint { margin-top: 30px; font: 300 10px/1.8 var(--serif); letter-spacing:.2em; opacity:.4; }
-  #best { position:absolute; left:50%; bottom: 13%; transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; }
+  #end .hint { margin-top: 26px; font: 300 10px/1.8 var(--serif); letter-spacing:.2em; opacity:.4; }
+  #best { position:absolute; left:50%; bottom: 13%; transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; white-space:nowrap; }
 `;
 
-const COMBO_TIERS = [[5, '격살'], [12, '학살'], [22, '지옥'], [40, '신화']];
+const COMBO_TIERS = [[5, '격살', 2], [12, '학살', 3], [22, '지옥', 4], [40, '신화', 5]];
 const MILESTONES = [[100, '백귀토벌'], [300, '삼백'], [500, '오백귀'], [1000, '천귀참'], [2000, '살아 있는 흉기']];
+// 등급 기준(데모 자동조준 완주 점수를 상한으로 보정한다)
+export const RANKS = [['S', 2400000], ['A', 1500000], ['B', 800000], ['C', 300000], ['D', 0]];   // 데모 완주 3.06M 기준
+export function rankOf(score) { return RANKS.find(([, min]) => score >= min)[0]; }
 
 export function createJuice(hud) {
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
-  for (const [id, cls] of [['stamp', ''], ['combo', ''], ['banner', ''], ['best', '']]) { const d = document.createElement('div'); d.id = id; hud.appendChild(d); }
+  for (const id of ['stamp', 'combo', 'banner', 'pops', 'best']) { const d = document.createElement('div'); d.id = id; hud.appendChild(d); }
   const $ = (id) => document.getElementById(id);
-  const stampEl = $('stamp'), comboEl = $('combo'), bannerEl = $('banner'), bestEl = $('best');
+  const stampEl = $('stamp'), comboEl = $('combo'), bannerEl = $('banner'), popsEl = $('pops'), bestEl = $('best');
 
-  const best = { kills: +(localStorage.getItem('kb.best.kills') || 0), time: +(localStorage.getItem('kb.best.time') || 0), runs: +(localStorage.getItem('kb.runs') || 0) };
-  if (best.kills) bestEl.textContent = `BEST ${best.kills} · ${fmt(best.time)}`;
+  const hs = JSON.parse(localStorage.getItem('kb.hs') || '[]');   // [{name, score, kills, win}]
+  const best = { runs: +(localStorage.getItem('kb.runs') || 0) };
+  if (hs.length) bestEl.textContent = `HI-SCORE ${String(hs[0].score).padStart(7, '0')} ${hs[0].name}`;
 
   let stampT = 0, comboCount = 0, comboLast = -1e9, maxCombo = 0, tier = -1, bannerT = 0, milestoneIdx = 0;
 
@@ -47,32 +60,41 @@ export function createJuice(hud) {
     stampEl.textContent = ch; stampEl.classList.remove('slam'); void stampEl.offsetWidth; stampEl.classList.add('slam');
   }
   function banner(text, ms = 2200) { bannerEl.textContent = text; bannerEl.classList.add('on'); bannerT = performance.now() + ms; }
+  // 점수 팝: 큰 사건만(쇠판·격추·집·보스·수리). 초당 14킬을 하나하나 띄우면 소음이다.
+  let popT = 0;
+  function pop(n, glyph) {
+    if (performance.now() - popT < 120 || popsEl.childElementCount > 5) return;
+    popT = performance.now();
+    const d = document.createElement('div'); d.innerHTML = `+${n.toLocaleString()}${glyph ? `<span>${glyph}</span>` : ''}`; popsEl.appendChild(d);
+    setTimeout(() => d.remove(), 950);
+  }
 
   function onKill(time, kills) {
     if (time - comboLast > 2.5) { comboCount = 0; tier = -1; }
     comboLast = time; comboCount++; maxCombo = Math.max(maxCombo, comboCount);
     let t = -1; for (let i = 0; i < COMBO_TIERS.length; i++) if (comboCount >= COMBO_TIERS[i][0]) t = i;
     if (t >= 0) {
-      comboEl.innerHTML = `<b>${comboCount}</b><span>${COMBO_TIERS[t][1]}</span>`; comboEl.classList.add('on'); comboEl.classList.toggle('gold', t === 3);
+      comboEl.innerHTML = `<b>${comboCount}</b><span>${COMBO_TIERS[t][1]} ×${COMBO_TIERS[t][2]}</span>`; comboEl.classList.add('on'); comboEl.classList.toggle('gold', t === 3);
       if (t !== tier) { comboEl.classList.remove('pop'); void comboEl.offsetWidth; comboEl.classList.add('pop'); }
       tier = t;
     }
     if (milestoneIdx < MILESTONES.length && kills >= MILESTONES[milestoneIdx][0]) { banner(`${MILESTONES[milestoneIdx][0]} — ${MILESTONES[milestoneIdx][1]}`); stamp('鬼'); milestoneIdx++; }
   }
   function update(time) {
-    if (time - comboLast > 2.5 && comboEl.classList.contains('on')) comboEl.classList.remove('on');
+    if (time - comboLast > 2.5 && comboEl.classList.contains('on')) { comboEl.classList.remove('on'); tier = -1; }
     if (bannerT && performance.now() > bannerT) { bannerEl.classList.remove('on'); bannerT = 0; }
   }
+  const mult = () => (tier >= 0 ? COMBO_TIERS[tier][2] : 1);
 
   function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
 
   function shareText(st) {
-    const pips = Math.min(10, Math.floor(st.kills / 100));
+    const pips = Math.min(10, Math.floor(st.kills / 150));
     return [
       '🌑 킹덤비 · 조선 느와르 좀비 개틀링',
-      st.win ? `새벽을 보았다${st.isRecord ? ' — 신기록' : ''}` : `${fmt(st.time)} 만에 마차가 멈췄다${st.isRecord ? ' — 신기록' : ''}`,
-      '',
-      `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴 · 궁궐까지 ${st.reachedM ?? 0} m`,
+      `${String(st.score).padStart(7, '0')} 점 · 등급 ${st.rank}${st.credits > 1 ? ` · 코인 ${st.credits}개` : ''}`,
+      st.win ? '恐龍을 쓰러뜨리고 새벽을 보았다' : `${fmt(st.time)} 만에 마차가 멈췄다 · 궁궐까지 ${st.reachedM} m`,
+      `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴`,
       pips ? '🩸'.repeat(pips) : '🌑 흑백의 밤',
       '',
       '너는 궁궐까지 갈 수 있나 → https://midagedev.github.io/kingdombi/',
@@ -87,7 +109,7 @@ export function createJuice(hud) {
     if (navigator.share) { try { await navigator.share({ text }); return '공유했다'; } catch (e) { if (e?.name === 'AbortError') return '취소'; } }
     return (await copy(text)) ? '클립보드에 복사했다' : '복사 실패';
   }
-  // 장면 저장: 게임 프레임 + 타이포 스트립 → PNG. captureFrame 은 렌더 직후의 캔버스 blob 을 준다.
+  // 장면 저장: 게임 프레임 + 타이포 스트립 → PNG.
   async function savePng(st, frameBlob) {
     const img = await createImageBitmap(frameBlob);
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
@@ -99,6 +121,8 @@ export function createJuice(hud) {
     g.textBaseline = 'top';
     g.fillStyle = '#e9e6df'; g.font = `200 ${px(0.085)}px "Noto Serif KR", "Apple Myungjo", serif`;
     g.fillText('킹덤비', px(0.06), c.height - H + px(0.085));
+    g.fillStyle = '#e6c87a'; g.font = `300 ${px(0.05)}px "IBM Plex Mono", ui-monospace, monospace`;
+    g.fillText(`${String(st.score).padStart(7, '0')}  ${st.rank}`, px(0.42), c.height - H + px(0.095));
     g.fillStyle = 'rgba(233,230,223,.7)'; g.font = `300 ${px(0.03)}px "IBM Plex Mono", ui-monospace, monospace`;
     g.fillText(`처치 ${st.kills}   연쇄 ${st.maxCombo}   명중 ${Math.round(st.accuracy * 100)}%   ${fmt(st.time)}`, px(0.06), c.height - H + px(0.19));
     g.fillStyle = 'rgba(233,230,223,.4)';
@@ -110,28 +134,38 @@ export function createJuice(hud) {
   }
 
   function endCard(endEl, st, frameBlob, onRestart) {
-    st.maxCombo = maxCombo;
-    st.isRecord = st.kills > best.kills;
+    st.maxCombo = maxCombo; st.rank = rankOf(st.score);
     best.runs++; localStorage.setItem('kb.runs', best.runs);
-    if (st.isRecord) { best.kills = st.kills; best.time = st.time; localStorage.setItem('kb.best.kills', st.kills); localStorage.setItem('kb.best.time', st.time); }
+    // 명예의 전당: 5위 안이면 이름 석 자
+    const entry = { name: '???', score: st.score, kills: st.kills, win: st.win };
+    const placed = hs.filter((e) => e.score > st.score).length;
+    st.isRecord = placed === 0 && st.score > 0;
+    const qualifies = placed < 5 && st.score > 0;
+    const table = [...hs]; if (qualifies) table.splice(placed, 0, entry); table.length = Math.min(5, table.length);
+    const rows = table.map((e, i) => `<div class="${e === entry ? 'me' : ''}">${i + 1}. ${e === entry ? '<input id="hsName" maxlength="3" placeholder="AAA" autocomplete="off">' : e.name.padEnd(3, ' ')}  ${String(e.score).padStart(7, '0')}  ${e.win ? '새벽' : '　　'}</div>`).join('');
     endEl.innerHTML = `<div class="card">
       <h2>${st.win ? '새벽이 왔다' : '밤을 넘기지 못했다'}</h2>
-      ${st.isRecord ? '<div class="rec">NEW RECORD</div>' : `<div class="rec muted">BEST ${best.kills}</div>`}
+      <div class="score">${String(st.score).padStart(7, '0')}<b>${st.rank}</b></div>
+      ${st.isRecord ? '<div class="rec">NEW HI-SCORE</div>' : `<div class="rec muted">${st.credits > 1 ? `CREDITS ${st.credits}` : `RANK ${placed + 1}`}</div>`}
       <div class="stats">
         <div class="red">처치<b>${st.kills}</b></div><div>최고 연쇄<b>${st.maxCombo}</b></div>
-        <div>명중률<b>${Math.round(st.accuracy * 100)}%</b></div><div>생존<b>${fmt(st.time)}</b></div>
+        <div>명중률<b>${Math.round(st.accuracy * 100)}%</b></div><div>${st.win ? '시간' : '궁궐까지'}<b>${st.win ? fmt(st.time) : `${st.reachedM}m`}</b></div>
       </div>
-      <div class="btns"><button id="btnShare">전적 공유</button><button id="btnPng" class="ghost">장면 저장</button><button id="btnRetry" class="ghost">다시</button></div>
-      <div class="hint">화면을 누르면 다시 밤으로</div></div>`;
+      <div class="hs">${rows}</div>
+      <div class="btns"><button id="btnShare">전적 공유</button><button id="btnPng">장면 저장</button><button id="btnRetry">다시</button></div>
+      <div class="hint">${qualifies ? '이름 석 자를 남기고 ' : ''}화면을 누르면 다시 밤으로</div></div>`;
     endEl.style.opacity = 1; endEl.style.pointerEvents = 'auto';
     const stop = (e) => e.stopPropagation();
-    endEl.querySelector('#btnShare').addEventListener('pointerdown', stop);
-    endEl.querySelector('#btnPng').addEventListener('pointerdown', stop);
-    endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); e.target.textContent = await share(st); });
-    endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : '프레임 없음'; });
-    endEl.querySelector('#btnRetry').addEventListener('click', onRestart);
-    endEl.addEventListener('pointerdown', (e) => { if (e.target.tagName !== 'BUTTON') onRestart(); });
+    for (const id of ['btnShare', 'btnPng', 'btnRetry']) endEl.querySelector('#' + id).addEventListener('pointerdown', stop);
+    const saveHs = () => { if (!qualifies) return; const inp = endEl.querySelector('#hsName'); entry.name = (inp?.value || 'AAA').toUpperCase().padEnd(3, 'A').slice(0, 3); localStorage.setItem('kb.hs', JSON.stringify(table)); };
+    const inp = endEl.querySelector('#hsName');
+    if (inp) { inp.addEventListener('pointerdown', stop); inp.addEventListener('change', saveHs); inp.addEventListener('input', saveHs); setTimeout(() => inp.focus(), 400); }
+    const restart = () => { saveHs(); onRestart(); };
+    endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = await share(st); });
+    endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : '프레임 없음'; });
+    endEl.querySelector('#btnRetry').addEventListener('click', restart);
+    endEl.addEventListener('pointerdown', (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') restart(); });
   }
 
-  return { stamp, banner, onKill, update, endCard, get maxCombo() { return maxCombo; } };
+  return { stamp, banner, pop, onKill, update, endCard, mult, get maxCombo() { return maxCombo; } };
 }

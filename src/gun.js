@@ -68,7 +68,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const tOrg = new Float32Array(TRACERS * 3), tDir = new Float32Array(TRACERS * 3), tLen = new Float32Array(TRACERS);
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0 };
+  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3 };
+  const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
+  const hooks = { onBodyHit: null, onBlast: null };
   const RATE = 42;     // 발/초
   let fireAcc = 0;
 
@@ -165,6 +167,10 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 2) 건물 부위
     const bh = raycastBuildings(_ray, t);
     if (bh) t = bh.t;
+    // 2.5) 보스 부위 — 첫 좀비·건물보다 앞이면 보스가 먹는다(관통 없음)
+    let th = null;
+    for (const tg of targets) { const r = tg.raycast(_ray, Math.min(t, z ? z.t : Infinity)); if (r && r.t < (th ? th.t : Infinity)) { th = r; th.target = tg; } }
+    if (th) t = th.t;
     // 3) 물리(지면·파편·시체)
     rapierRay.origin.x = _o.x; rapierRay.origin.y = _o.y; rapierRay.origin.z = _o.z;
     rapierRay.dir.x = _d.x; rapierRay.dir.y = _d.y; rapierRay.dir.z = _d.z;
@@ -176,15 +182,18 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (body && body.isDynamic()) {
         const m = body.mass() || 1, dv = Math.min(2.2, 60 / m);   // 시체·파편: 총알 한 발 = 속도 변화 ≤2.2 m/s
         body.applyImpulseAtPoint({ x: _d.x * dv * m, y: 0.5 * dv * m, z: _d.z * dv * m }, { x: hx, y: hy, z: hz }, true);
-        fx.blood.burst(hx, hy, hz, 3, { dirX: _d.x * 0.5, dirY: 0.5, dirZ: _d.z * 0.5, spread: 0.8, power: 5, scale: 0.8, time });
+        if (!hooks.onBodyHit?.(body, hx, hy, hz, time)) fx.blood.burst(hx, hy, hz, 3, { dirX: _d.x * 0.5, dirY: 0.5, dirZ: _d.z * 0.5, spread: 0.8, power: 5, scale: 0.8, time });
       } else {
         fx.shards.burst(hx, hy, hz, 2, { dirX: -_d.x * 0.3, dirY: 0.6, dirZ: -_d.z * 0.3, spread: 0.5, power: 2.5, scale: 0.6, time });
         if (state.shots % 3 === 0) audio.hitStone();
       }
+    } else if (th) {
+      state.hits++;
+      th.target.hit(th.part, 2.6, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, _d.x, _d.z, time);
     } else if (bh) {
       const p = bh.part; const hx = _o.x + _d.x * t, hy = _o.y + _d.y * t, hz = _o.z + _d.z * t;
       const dmg = 5.5;
-      p.hp -= dmg; bh.b.hp -= dmg;
+      p.hp -= dmg; if (bh.b.kind !== 'palace') bh.b.hp -= dmg;   // 궁궐은 빗나간 총알로 통째로 무너지지 않는다(부위만 떨어진다) — 恐龍 결말용
       fx.shards.burst(hx, hy, hz, 3, { dirX: -_d.x * 0.6, dirY: 0.5, dirZ: -_d.z * 0.6, spread: 0.8, power: 3.5, scale: 0.9, time });
       if (state.shots % 2 === 0) audio.hitStone();
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
@@ -208,7 +217,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     state.recoil = Math.min(1, state.recoil + 0.35);
     look.state.flash = Math.min(0.22, look.state.flash + 0.05);
     audio.shot();
-    if (state.heat >= 1) { state.jammed = 2.6; audio.overheat(); }
+    // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
   function update(dt, time) {
@@ -243,6 +252,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     // 트레이서 수명
     updateTracers(time);
+    updateBombs(dt, time);
     pumpCollapse(time);
     // 파편 낙하로 좀비 압사: 빠르게 움직이는 큰 파편 주변
     for (const c of physics.chunks) {
@@ -260,17 +270,59 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     el.addEventListener('pointermove', (e) => {
       if (!active) return;
       state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.62, 0.2);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.62, state.pitchMax);
       lastX = e.clientX; lastY = e.clientY;
     });
     const stop = () => { active = false; state.firing = false; };
     el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
   }
 
+  // ── 비격진천뢰: 조준점으로 던지는 시한 폭탄. 물리 몸체로 날아가 1.5초 뒤(또는 착지 0.3초 뒤) 터진다 ──
+  const bombs = [];
+  const BOMB = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, metalness: 0.6, roughness: 0.5 });
+  const FUSE = new THREE.MeshBasicMaterial({ color: 0xffb347 });
+  function throwBomb(time) {
+    if (state.bombs <= 0 || state.jammed > 0 && false) return false;
+    state.bombs--;
+    muzzle.getWorldPosition(_o); muzzle.getWorldDirection(_d); _d.negate();
+    const range = 34;
+    const tx = _o.x + _d.x * range, tz = _o.z + _d.z * range, T = 1.25, g = 16;
+    const vel = { x: (tx - _o.x) / T, y: (0.5 - _o.y + 0.5 * g * T * T) / T, z: (tz - _o.z) / T };
+    const { RAPIER, world } = physics;
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(_o.x, _o.y + 0.2, _o.z).setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: 6, y: 2, z: 4 }).setCcdEnabled(true));
+    world.createCollider(RAPIER.ColliderDesc.ball(0.32).setDensity(900).setRestitution(0.2), body);
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), BOMB); mesh.castShadow = true; scene.add(mesh);
+    const fuse = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), FUSE); fuse.position.y = 0.34; fuse.layers.set(LAYER_SPOT); mesh.add(fuse);
+    bombs.push({ body, mesh, born: time, landAt: 0 });
+    state.recoil = Math.min(1, state.recoil + 0.6); audio.hitStone();
+    return true;
+  }
+  function updateBombs(dt, time) {
+    for (const b of [...bombs]) {
+      const t = b.body.translation(), r = b.body.rotation();
+      b.mesh.position.set(t.x, t.y, t.z); b.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+      b.mesh.children[0].material.color.setHex(Math.floor(time * 12) % 2 ? 0xffb347 : 0xffffff);
+      if (!b.landAt && t.y < 0.45) b.landAt = time;
+      if (time - b.born > 1.5 || (b.landAt && time - b.landAt > 0.3)) {
+        physics.world.removeRigidBody(b.body); b.mesh.removeFromParent(); bombs.splice(bombs.indexOf(b), 1);
+        const R = 9;
+        fx.shards.burst(t.x, 0.6, t.z, 40, { dirY: 1.0, spread: 1.6, power: 12, scale: 1.0, time });
+        fx.blood.burst(t.x, 1.0, t.z, 30, { dirY: 0.8, spread: 1.6, power: 11, scale: 1.2, time });
+        fx.decals.add(t.x, t.z, 6, time);
+        look.state.flash = Math.max(look.state.flash, 0.8);
+        audio.collapse(1.3); audio.thunder();
+        blastBuildings(t.x, t.z, R * 0.8, time);
+        hooks.onBlast?.(t.x, t.z, R, time);
+      }
+    }
+  }
+  // 건물 하나를 통째로 무너뜨린다(보스가 쓰러지며 덮치는 궁궐 등)
+  function razeBuilding(b, dirX, dirZ, time) { if (b.alive) { b.hp = 0; collapse(b, dirX, dirZ, time); } }
+
   // 폭발 반경 안의 건물 부위를 바깥으로 날린다. 건물 체력도 깎여 붕괴로 이어질 수 있다.
   function blastBuildings(x, z, R, time) {
     for (const b of buildings) {
-      if (!b.alive) continue;
+      if (!b.alive || b.kind === 'palace') continue;   // 궁궐은 恐龍이 쓰러질 때만 무너진다(비격진천뢰로 미리 무너지면 결말이 샌다)
       if (x < b.bounds.min.x - R || x > b.bounds.max.x + R || z < b.bounds.min.z - R || z > b.bounds.max.z + R) continue;
       let n = 0;
       for (const p of b.parts) {
@@ -283,5 +335,5 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (b.hp <= 0 && b.alive) collapse(b, 0, -1, time);
     }
   }
-  return { root, yawPivot, pitchPivot, muzzle, state, update, attachInput, blastBuildings };
+  return { root, yawPivot, pitchPivot, muzzle, state, targets, hooks, update, attachInput, blastBuildings, throwBomb, razeBuilding };
 }

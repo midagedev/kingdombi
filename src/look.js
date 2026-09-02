@@ -25,7 +25,7 @@ const BLUR = /* glsl */`
 const COMPOSITE = /* glsl */`
   precision highp float;
   uniform sampler2D tWorld, tSpot, tGlow, tDepth;
-  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert;
+  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint;
   varying vec2 vUv;
 
   float linDepth(vec2 uv) {
@@ -68,7 +68,11 @@ const COMPOSITE = /* glsl */`
     vec2 q = vUv - 0.5;
     ink *= 1.0 - dot(q, q) * 1.1;
 
-    vec3 world = vec3(ink);
+    // 색 완화(2026-09-03): 순수 흑백은 보스·소품·좀비 종류 가시성을 깎았다. 잉크 명도 위에 원래 색조를 tint 만큼 얹는다.
+    // 색조 = 색/명도(명도 1 로 정규화) → 잉크 값에 곱해 대비는 그대로, 색만 배어 나온다. 채도는 살짝 눌러 씬시티의 '바랜 색'.
+    vec3 hue = clamp(col / max(lum, 1e-3), 0.0, 2.5);
+    hue = mix(vec3(1.0), hue, 0.75);
+    vec3 world = mix(vec3(ink), ink * hue, tint);
     // 종이 위의 잉크: 아주 미세한 한색 편향(순수 무채색보다 폰에서 덜 탁하다)
     world *= vec3(0.96, 0.98, 1.0);
 
@@ -114,7 +118,7 @@ export function createLook(renderer, scene, camera) {
     uniforms: {
       tWorld: { value: rtWorld.texture }, tSpot: { value: rtSpot.texture }, tGlow: { value: rtGlowB.texture }, tDepth: { value: depth },
       texel: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, time: { value: 0 }, flash: { value: 0 },
-      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 },
+      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 },
     },
   });
   const quad = new THREE.Mesh(quadGeo, compMat);
@@ -122,7 +126,7 @@ export function createLook(renderer, scene, camera) {
   quadScene.add(quad);
 
   const spotClear = new THREE.Color(0x000000);
-  const state = { flash: 0, rain: 1, darkness: 0, blood: 0, invert: 0 };
+  const state = { flash: 0, rain: 1, darkness: 0, blood: 0, invert: 0, tint: +(new URLSearchParams(location.search).get('tint') ?? 0.3) };   // ?tint=0..1
 
   function blit(mat, target) {
     quad.material = mat;
@@ -164,7 +168,7 @@ export function createLook(renderer, scene, camera) {
     compMat.uniforms.flash.value = state.flash;
     compMat.uniforms.rain.value = state.rain;
     compMat.uniforms.darkness.value = state.darkness;
-    compMat.uniforms.blood.value = state.blood; compMat.uniforms.invert.value = state.invert;
+    compMat.uniforms.blood.value = state.blood; compMat.uniforms.invert.value = state.invert; compMat.uniforms.tint.value = state.tint;
     compMat.uniforms.near.value = camera.near; compMat.uniforms.far.value = camera.far;
     blit(compMat, null);
   }
