@@ -268,7 +268,7 @@ addEventListener('resize', resize); resize();
 function insertCoin() {
   game.started = true; game.credits = 1;
   audio.start(); audio.coin(); setTimeout(() => audio.setBgm('wave'), 700);
-  $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on');
+  $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
   if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z + 0.5; director.stopKills0 = horde.stats.kills - ROUTE.stops[i].quota; director.district = districtAt(vpos.z); cullBuildings(); }
@@ -372,6 +372,7 @@ const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('h
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
 window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, juice, fps: 0 };
 cullBuildings(); followLights(0, ROUTE.start);
+$('gauges').classList.add('hidden');   // 타이틀에선 장갑 게이지 대신 크레딧이 그 자리에 있다
 
 let captureRequest = null;   // 사망 프레임 캡처 콜백(렌더 직후 1회)
 renderer.setAnimationLoop((now) => {
