@@ -147,7 +147,7 @@ const audio = createAudio();
 const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { position: playerPos, onCollapse: (b) => nightlife.onBuildingCollapsed(b) });
 gun.attachInput(canvas);
 
-const game = { started: false, over: false, hp: 100, time: 0, dawnAt: 120, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
+const game = { started: false, over: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: 120, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -213,7 +213,9 @@ renderer.setAnimationLoop((now) => {
   }
   if (started) {
     horde.update(dt, time);
-    if (horde.stats.reached > reachedBefore) { if (!game.god) game.hp -= horde.stats.reachDamage; horde.stats.reachDamage = 0; look.state.flash = Math.max(look.state.flash, 0.1); game.lastReached = horde.stats.reached; }
+    // 포대 공격 피해는 풀에 쌓아 초당 9 까지만 빠진다 — 떼가 한꺼번에 붙어도 최소 11초는 버티며 쏴 낼 수 있다
+    if (horde.stats.reached > reachedBefore) { game.pendingDamage += horde.stats.reachDamage; horde.stats.reachDamage = 0; look.state.flash = Math.max(look.state.flash, 0.1); game.lastReached = horde.stats.reached; }
+    if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
     gun.update(dt, time);
     physics.step(dt, time);
     fx.shards.update(dt, time); fx.blood.update(dt, time); fx.decals.update(time);
