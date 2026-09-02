@@ -74,7 +74,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const tracerBorn = new Float32Array(TRACERS).fill(-1e9); let tracerCursor = 0;
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, recoil: 0 };
+  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0 };
   const RATE = 42;     // 발/초
   let fireAcc = 0;
 
@@ -183,6 +183,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
       if (bh.b.hp <= 0 && bh.b.alive) collapse(bh.b, _d.x, _d.z, time);
     } else if (z) {
+      state.hits++;
       let dmg = 2.6;
       for (const h of zh) {
         if (h.t > t) break;

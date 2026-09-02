@@ -25,7 +25,7 @@ const BLUR = /* glsl */`
 const COMPOSITE = /* glsl */`
   precision highp float;
   uniform sampler2D tWorld, tSpot, tGlow, tDepth;
-  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw;
+  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert;
   varying vec2 vUv;
 
   float linDepth(vec2 uv) {
@@ -78,8 +78,17 @@ const COMPOSITE = /* glsl */`
     float sm = max(spot.r, max(spot.g, spot.b));
     vec3 outc = mix(world, spot, clamp(sm * 1.4, 0.0, 1.0)) + glow * 0.9;
 
+    // 붉은 밤: 보루가 무너져 간다 — 흑백 세계가 붉게 물들고 가장자리가 심장처럼 맥동한다
+    if (blood > 0.001) {
+      vec3 red = vec3(ink * 1.05 + 0.10, ink * 0.10, ink * 0.08);
+      float pulse = 0.5 + 0.5 * sin(time * 4.2);
+      outc = mix(outc, red + spot * 0.4 + glow * 0.6, blood * 0.85);
+      outc += blood * dot(q, q) * 2.2 * vec3(0.45 + 0.25 * pulse, 0.0, 0.0);
+    }
     // 총구 화염 플래시: 화면 전체가 한 순간 종이처럼 하얘진다
     outc += flash * vec3(1.0, 0.96, 0.9) * (0.35 + 0.65 * ink);
+    // 임팩트 프레임(만화식 반전)
+    outc = mix(outc, 1.0 - outc, invert);
 
     if (raw > 0.5) outc = col + spot;
     if (raw > 1.5) outc = vec3(clamp(d / 150.0, 0.0, 1.0));
@@ -105,7 +114,7 @@ export function createLook(renderer, scene, camera) {
     uniforms: {
       tWorld: { value: rtWorld.texture }, tSpot: { value: rtSpot.texture }, tGlow: { value: rtGlowB.texture }, tDepth: { value: depth },
       texel: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, time: { value: 0 }, flash: { value: 0 },
-      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 },
+      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 },
     },
   });
   const quad = new THREE.Mesh(quadGeo, compMat);
@@ -113,7 +122,7 @@ export function createLook(renderer, scene, camera) {
   quadScene.add(quad);
 
   const spotClear = new THREE.Color(0x000000);
-  const state = { flash: 0, rain: 1, darkness: 0 };
+  const state = { flash: 0, rain: 1, darkness: 0, blood: 0, invert: 0 };
 
   function blit(mat, target) {
     quad.material = mat;
@@ -155,6 +164,7 @@ export function createLook(renderer, scene, camera) {
     compMat.uniforms.flash.value = state.flash;
     compMat.uniforms.rain.value = state.rain;
     compMat.uniforms.darkness.value = state.darkness;
+    compMat.uniforms.blood.value = state.blood; compMat.uniforms.invert.value = state.invert;
     compMat.uniforms.near.value = camera.near; compMat.uniforms.far.value = camera.far;
     blit(compMat, null);
   }

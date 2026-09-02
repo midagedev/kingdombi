@@ -21,15 +21,22 @@ const BONES = [
   { id: 10, size: [0.13, 0.46, 0.13], at: [0.11, 0.23, 0] },
 ];
 
+function tag(g, id) { if (g.index) g = g.toNonIndexed(); const n = g.attributes.position.count; g.setAttribute("aBone", new THREE.Float32BufferAttribute(new Float32Array(n).fill(id), 1)); return g; }
 function buildZombieGeometry() {
   const parts = [];
   for (const b of BONES) {
     const g = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2], 1, 2, 1);
     g.translate(b.at[0], b.at[1], b.at[2]);
-    const n = g.attributes.position.count;
-    g.setAttribute('aBone', new THREE.Float32BufferAttribute(new Float32Array(n).fill(b.id), 1));
-    parts.push(g.toNonIndexed());
+    parts.push(tag(g, b.id));
   }
+  // 케데헌 데몬 문법: 뿔 한 쌍(머리), 가슴 코어(발광 팔면체), 발톱(전완 끝 웨지)
+  for (const sx of [-1, 1]) {
+    const horn = new THREE.ConeGeometry(0.035, 0.22, 5); horn.translate(0, 0.11, 0); horn.rotateZ(-sx * 0.55); horn.translate(sx * 0.09, 1.86, 0.0);
+    parts.push(tag(horn, 2));
+    const claw = new THREE.ConeGeometry(0.045, 0.16, 4); claw.rotateX(Math.PI); claw.translate(sx * 0.27, 0.86, 0.02);
+    parts.push(tag(claw, sx < 0 ? 5 : 6));
+  }
+  const core = new THREE.OctahedronGeometry(0.085, 0); core.translate(0, 1.34, 0.13); parts.push(tag(core, 1));
   // 수동 병합 (BufferGeometryUtils 없이: 속성 셋이 동일)
   const total = parts.reduce((a, g) => a + g.attributes.position.count, 0);
   const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), bone = new Float32Array(total);
@@ -54,7 +61,7 @@ const ANIM_GLSL = /* glsl */`
   attribute float iHit;     // 피격 시각
   attribute float iType;    // 0 보통 1 거대 2 폭탄 3 질주
   uniform float uTime; uniform float uDead;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld;
 
   vec3 rotX(vec3 p, vec3 piv, float a) { p -= piv; float c = cos(a), s = sin(a); return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z) + piv; }
   vec3 rotZ(vec3 p, vec3 piv, float a) { p -= piv; float c = cos(a), s = sin(a); return vec3(c*p.x - s*p.y, s*p.x + c*p.y, p.z) + piv; }
@@ -106,6 +113,7 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
     vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
     vModel = position;
     vec4 wp = instanceMatrix * vec4(p, 1.0);
+    vWorld = (modelMatrix * wp).xyz;
     vNormalW = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * wp;
   }
@@ -115,11 +123,14 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
 const BODY_FRAG = /* glsl */`
   precision highp float;
   uniform vec3 uMoonDir; uniform float uTime;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying vec3 vWorld;
   void main() {
-    float top = max(0.0, dot(normalize(vNormalW), uMoonDir));
+    vec3 n = normalize(vNormalW);
+    float top = max(0.0, dot(n, uMoonDir));
+    vec3 v = normalize(cameraPosition - vWorld);
+    float rim = pow(1.0 - max(0.0, dot(n, v)), 3.0);        // 프레넬 림 — 전열이 검은 덩어리가 아닌 '몸'으로 읽힌다(라이트 0)
     float hit = exp(-(uTime - vHit) * 14.0);
-    vec3 c = vec3(0.02) + top * 0.10 + hit * 0.9;   // 피격 순간 실루엣이 종이처럼 하얘진다
+    vec3 c = vec3(0.02) + top * 0.10 + rim * 0.28 + hit * 0.9;   // 피격 순간 실루엣이 종이처럼 하얘진다
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -128,7 +139,7 @@ const BODY_FRAG = /* glsl */`
 const GLOW_FRAG = /* glsl */`
   precision highp float;
   uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld;
   void main() {
     float g = 0.0;
     vec3 col = uColor;
@@ -139,6 +150,8 @@ const GLOW_FRAG = /* glsl */`
       float e1 = length(vModel.xy - vec2(-0.055, 1.75)), e2 = length(vModel.xy - vec2(0.055, 1.75));
       g += front * (smoothstep(eyeR, 0.02, e1) + smoothstep(eyeR, 0.02, e2)) * 2.2;
     }
+    // 가슴 코어: 팔면체 표면 전체가 빛난다(모델 좌표로 판정)
+    if (vBone == 1.0 && length(vModel - vec3(0.0, 1.34, 0.13)) < 0.1) g += 2.0 * (0.7 + 0.3 * sin(uTime * 2.5 + vModel.x * 40.0));
     if (vType == 2.0) {
       // 폭탄 좀비: 배(몸통 앞면)가 붉게 달아오르며 점점 빠르게 박동
       float belly = smoothstep(0.30, 0.08, length(vModel.xy - vec2(0.0, 1.22))) * smoothstep(0.06, 0.12, vModel.z);
@@ -228,7 +241,7 @@ export function createHorde(scene, physics, {
   const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
   const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0 };
-  const hooks = { onExplode: null };
+  const hooks = { onExplode: null, onKill: null };
 
   function reset(i, time) {
     px[i] = spawn.x + (Math.random() - 0.5) * 2 * spawn.halfW;
@@ -249,9 +262,11 @@ export function createHorde(scene, physics, {
   iPhase.needsUpdate = true; iSpeed.needsUpdate = true;
 
   // 건물 회피용 원(둘레 원으로 근사 — 골목이 열려 있으면 충분)
+  // 집은 넉넉히 피하고, 석탑 같은 작은 장애물은 스치듯 지나간다(골목 한복판에서 떼가 뭉치지 않게)
   const obstacles = buildings.filter((b) => { const sz = b.bounds.getSize(new THREE.Vector3()); return Math.max(sz.x, sz.z) > 3; }).map((b) => {
     const c = b.bounds.getCenter(new THREE.Vector3()); const sz = b.bounds.getSize(new THREE.Vector3());
-    return { x: c.x, z: c.z, hx: sz.x / 2 + 0.6, hz: sz.z / 2 + 0.6, b };
+    const small = Math.max(sz.x, sz.z) < 8;
+    return { x: c.x, z: c.z, hx: sz.x / 2 + (small ? 0.1 : 0.6), hz: sz.z / 2 + (small ? 0.1 : 0.6), margin: small ? 0.5 : 1.5, b };
   });
 
   // 공간 해시(분리력)
@@ -296,9 +311,10 @@ export function createHorde(scene, physics, {
       for (const o of obstacles) {
         if (!o.b.alive) continue;
         const rx = px[i] - o.x, rz = pz[i] - o.z;
-        if (Math.abs(rx) < o.hx + 1.5 && Math.abs(rz) < o.hz + 1.5) {
-          const ex = o.hx + 1.5 - Math.abs(rx), ez = o.hz + 1.5 - Math.abs(rz);
-          if (ex < ez) ax += Math.sign(rx) * 3.0 * (ex / 1.5 + 0.2); else az += Math.sign(rz) * 3.0 * (ez / 1.5 + 0.2);
+        const mg = o.margin;
+        if (Math.abs(rx) < o.hx + mg && Math.abs(rz) < o.hz + mg) {
+          const ex = o.hx + mg - Math.abs(rx), ez = o.hz + mg - Math.abs(rz);
+          if (ex < ez) ax += Math.sign(rx) * 3.0 * (ex / mg + 0.2); else az += Math.sign(rz) * 3.0 * (ez / mg + 0.2);
           // 박스 안쪽으로 파고들었으면 즉시 밀어냄
           if (Math.abs(rx) < o.hx && Math.abs(rz) < o.hz) { if (o.hx - Math.abs(rx) < o.hz - Math.abs(rz)) px[i] = o.x + Math.sign(rx || 1) * (o.hx + 0.1); else pz[i] = o.z + Math.sign(rz || 1) * (o.hz + 0.1); }
         }
@@ -383,6 +399,7 @@ export function createHorde(scene, physics, {
   function kill(i, dirX, dirZ, time, force = 9) {
     if (!alive[i]) return;
     alive[i] = 0; stats.kills++;
+    hooks.onKill?.(type[i], px[i], pz[i], time);
     respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: 0.8 + Math.random() * 1.2, z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];

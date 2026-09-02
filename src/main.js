@@ -7,6 +7,8 @@ import { createDebris, createDecals } from './debris.js';
 import { createGun } from './gun.js';
 import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
+import { createFires } from './fire.js';
+import { createJuice } from './juice.js';
 
 const q = new URLSearchParams(location.search);
 const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -129,6 +131,10 @@ const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
 const playerPos = new THREE.Vector3(LAYOUT.player.x, LAYOUT.player.y, LAYOUT.player.z);
 const horde = createHorde(scene, physics, { count: zombieCount, spawn: LAYOUT.spawn, target: playerPos, buildings: world.buildings });
 horde.uniforms.uMoonDir.value.copy(moonDir);
+horde.hooks.onKill = (type, x, z, time) => {
+  juice.onKill(time, horde.stats.kills);
+  if (type === 1) { game.hitstop = 0.42; look.state.invert = 1; juice.stamp('巨'); audio.collapse(0.6); }
+};
 // 폭탄 좀비 폭발: 반경 안 좀비 즉사(연쇄), 건물 부위 파괴, 피·파편·플래시·굉음
 horde.hooks.onExplode = (x, z, time) => {
   const R = 6.5;
@@ -137,6 +143,7 @@ horde.hooks.onExplode = (x, z, time) => {
   fx.decals.add(x, z, 4.5, time);
   look.state.flash = Math.max(look.state.flash, 0.5);
   audio.collapse(0.9);
+  juice.stamp('爆');
   setTimeout(() => horde.crushNear(x, z, R, time + 0.05), 60);   // 한 프레임 뒤 — 연쇄 폭발이 눈에 보이게
   gun.blastBuildings(x, z, R, time);
   // 시체·파편 날리기
@@ -145,19 +152,21 @@ horde.hooks.onExplode = (x, z, time) => {
   for (const c of physics.corpses) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) shove(c.body, dx, dz, d, 6); }
   for (const c of physics.chunks) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) shove(c.body, dx, dz, d, 7); }
 };
-const nightlife = createNightlife(scene, world.buildings, { playerZ: LAYOUT.player.z, maxLights: 2 });
+const fires = createFires(scene);
+const juice = createJuice(hud);
+const nightlife = createNightlife(scene, world.buildings, { playerZ: LAYOUT.player.z, maxLights: 0 });   // 라이트 예산: 거리등 2 + 총구 + 화재 1
 const audio = createAudio();
-const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { position: playerPos, onCollapse: (b) => nightlife.onBuildingCollapsed(b) });
+const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { position: playerPos, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.bounds.getCenter(new THREE.Vector3()), sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); } } });
 gun.attachInput(canvas);
 
-const game = { started: false, over: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: 120, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
+const game = { started: false, over: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: 120, timeScale: 1, hitstop: 0, razed: 0, bloodNight: false, dying: 0, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
 
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
   const db = renderer.getDrawingBufferSize(new THREE.Vector2()); look.setSize(db.x, db.y);
   camera.aspect = w / h; camera.updateProjectionMatrix();
-  camera.fov = w > h ? 44 : 64; camera.updateProjectionMatrix();
+  camera.fov = w > h ? 34 : 48;   // 좁은 화각 — 망원 압축으로 떼가 빽빽해 보인다 camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
@@ -171,7 +180,7 @@ canvas.addEventListener('pointerdown', () => {
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new THREE.Vector3();
 function updateCamera(dt) {
   const yaw = gun.state.yaw * 0.6;
-  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.6, 7.2, Math.cos(yaw) * 6.8 + Math.sin(yaw) * 1.6).add(playerPos);
+  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, 9.0, Math.cos(yaw) * 11.5 + Math.sin(yaw) * 1.8).add(playerPos);
   // 살짝 옆에서 (오른쪽 어깨) — 총열과 골목이 동시에 보인다
   const r = gun.state.recoil;
   camPos.x += (Math.random() - 0.5) * r * 0.12; camPos.y += (Math.random() - 0.5) * r * 0.1;
@@ -186,11 +195,16 @@ const fpsEl = $('fps'), killsEl = $('kills'), heatFill = $('heatFill'), hpFill =
 let frames = 0, acc = 0, last = performance.now();
 window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, fps: 0 };
 
+let captureRequest = null;   // 사망 프레임 캡처 콜백(렌더 직후 1회)
 renderer.setAnimationLoop((now) => {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const rawDt = Math.min(0.05, (now - last) / 1000); last = now;
+  // 히트스톱(거대 킬)·사망 슬로우: 시간 배율
+  if (game.hitstop > 0) { game.hitstop -= rawDt; game.timeScale = 0.16; } else if (game.dying > 0) { game.timeScale = 0.2; } else game.timeScale = 1;
+  const dt = rawDt * game.timeScale;
   const started = game.started && !game.over;
   if (started) game.time += dt;
   const time = game.time;
+  look.state.invert *= Math.exp(-rawDt * 22);
 
   // 좀비 도달 → 체력
   const reachedBefore = game.lastReached;
@@ -242,13 +256,22 @@ renderer.setAnimationLoop((now) => {
   nightlife.update(dt);
   for (const l of lanterns) l.light.intensity = l.base * (0.85 + 0.15 * Math.sin(now * 0.011 + l.phase) + 0.08 * Math.sin(now * 0.037 + l.phase * 3));
 
+  // 붉은 밤: 체력 28% 미만이면 세계가 붉게 물든다
+  const wantBlood = started && game.hp < 28;
+  if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner('포대가 무너진다 — 붉은 밤'); juice.stamp('危'); audio.thunder(); }
+  if (!wantBlood) game.bloodNight = false;
+  look.state.blood += ((game.bloodNight ? 1 : 0) - look.state.blood) * Math.min(1, rawDt * 2.5);
+  fires.update(dt); juice.update(time);
+
   // 새벽
   if (started && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); }
   if (started && time > game.dawnAt + 12) endGame(true);
-  if (started && game.hp <= 0) endGame(false);
+  if (started && game.hp <= 0 && !game.dying) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; }
+  if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = -1; endGame(false); } }
 
   renderer.info.reset();
   look.render(now / 1000);
+  if (captureRequest) { const cb = captureRequest; captureRequest = null; canvas.toBlob((b) => cb(b), 'image/png'); }
 
   frames++; acc += dt;
   if (acc >= 0.5) {
@@ -265,10 +288,6 @@ renderer.setAnimationLoop((now) => {
 function endGame(win) {
   if (game.over) return;
   game.over = true;
-  const end = $('end');
-  end.innerHTML = win
-    ? `<div class="big">새벽이 왔다</div><div class="sub">처치 ${horde.stats.kills} · 화면을 눌러 다시 밤으로</div>`
-    : `<div class="big">밤을 넘기지 못했다</div><div class="sub">처치 ${horde.stats.kills} · 화면을 눌러 다시</div>`;
-  end.style.opacity = 1; end.style.pointerEvents = 'auto';
-  end.addEventListener('pointerdown', () => location.reload(), { once: true });
+  const st = { win, kills: horde.stats.kills, time: game.time, accuracy: gun.state.shots ? gun.state.hits / gun.state.shots : 0, razed: game.razed };
+  captureRequest = (blob) => juice.endCard($('end'), st, blob, () => location.reload());
 }
