@@ -216,10 +216,10 @@ export function createHorde(scene, physics, {
   const type = new Uint8Array(N);
   // 0 보통 · 1 거대(느리고 단단, 도달 시 큰 피해) · 2 폭탄(죽으면 폭발) · 3 질주(작고 빠름)
   const TYPES = [
-    { speed: [6.5, 10], hp: [3, 5], scale: [0.9, 1.12], reachDmg: 1.0 },      // reachDmg = 포대 앞에서 1초마다 주는 피해
-    { speed: [3.4, 4.2], hp: [42, 55], scale: [2.0, 2.3], reachDmg: 8 },
-    { speed: [5.5, 7.5], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },       // 폭탄: 도달 즉시 폭발(1회)
-    { speed: [11, 13.5], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 0.7 },
+    { speed: [3.6, 5.2], hp: [3, 5], scale: [0.9, 1.12], reachDmg: 1.0 },      // reachDmg = 포대 앞에서 1초마다 주는 피해
+    { speed: [2.0, 2.6], hp: [42, 55], scale: [2.0, 2.3], reachDmg: 8 },
+    { speed: [3.2, 4.2], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },       // 폭탄: 도달 즉시 폭발(1회)
+    { speed: [6.5, 8.0], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 0.7 },
   ];
   const rollType = () => { const r = Math.random(); return r < 0.035 ? 1 : r < 0.12 ? 2 : r < 0.28 ? 3 : 0; };
   const respawnAt = new Float32Array(N);
@@ -245,11 +245,11 @@ export function createHorde(scene, physics, {
     respawnAt[i] = 0;
   }
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < N; i++) { reset(i, 0); pz[i] += 35 - Math.random() * 75; }
+  for (let i = 0; i < N; i++) { reset(i, 0); pz[i] += 60 - Math.random() * 70; }
   iPhase.needsUpdate = true; iSpeed.needsUpdate = true;
 
   // 건물 회피용 원(둘레 원으로 근사 — 골목이 열려 있으면 충분)
-  const obstacles = buildings.map((b) => {
+  const obstacles = buildings.filter((b) => { const sz = b.bounds.getSize(new THREE.Vector3()); return Math.max(sz.x, sz.z) > 3; }).map((b) => {
     const c = b.bounds.getCenter(new THREE.Vector3()); const sz = b.bounds.getSize(new THREE.Vector3());
     return { x: c.x, z: c.z, hx: sz.x / 2 + 0.6, hz: sz.z / 2 + 0.6, b };
   });

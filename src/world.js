@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { PRESETS, buildBuilding, buildPalaceCompound } from 'cheoma/building';
 import { buildTempleCompound } from 'cheoma/src/api/temple.js';
+import { buildProp } from 'cheoma/src/api/props.js';
 import { mergeStatic } from 'cheoma/src/village/instancing.js';
 import { canonicalizeSharedMaterials } from 'cheoma/src/builder/palette.js';
 
@@ -25,11 +26,11 @@ export const LAYOUT = {
   temple: { x: -58, z: -92, y: 5, yaw: 0.35 },           // 서쪽 언덕 위 소규모 사찰
   houses: [
     { style: 'giwa',  x: -22, z: -96, yaw:  0.08 },
-    { style: 'choga', x:  22, z: -84, yaw: -0.12 },
-    { style: 'giwa',  x:  20, z: -56, yaw:  0.18 },
-    { style: 'choga', x: -21, z: -52, yaw: -0.06 },
+    { style: 'choga', x:  17, z: -84, yaw: -0.12 },
+    { style: 'giwa',  x:  16, z: -56, yaw:  0.18 },
+    { style: 'choga', x: -17, z: -54, yaw: -0.06 },
     { style: 'giwa',  x: -14, z: -26, yaw:  Math.PI + 0.35 }, // 길 한복판 가까이, 첫 파괴 대상
-    { style: 'choga', x:  24, z: -30, yaw:  0.22 },
+    { style: 'choga', x:  15, z: -32, yaw:  0.22 },
     { style: 'choga', x: -38, z: -62, yaw: -0.4 },               // 뒷줄
     { style: 'giwa',  x:  42, z: -72, yaw:  0.5 },
     { style: 'choga', x: -30, z: -124, yaw: 0.1 },
@@ -37,6 +38,21 @@ export const LAYOUT = {
     { style: 'choga', x:  44, z: -40, yaw: -0.15 },
   ],
   player: { x: 0, y: 3.2, z: 30 },
+  // 사격 경로 위의 파괴 소품 — 빗나간 총알마다 무엇인가 터진다. 골목 한복판(x≈0)과 양옆(x≈±6).
+  props: [
+    { name: 'pagoda', x: 0, z: -66, scale: 1.15, seed: 3 },
+    { name: 'jangseung-pair', x: 0, z: -118, scale: 1.2, seed: 4 },
+    { name: 'haetae', x: -5, z: -126, seed: 5 }, { name: 'haetae', x: 5, z: -126, seed: 6, mirror: true },
+    ...[-18, -44, -70, -96].flatMap((z, i) => [{ name: 'stone-lantern', x: -6.2, z, seed: 10 + i }, { name: 'stone-lantern', x: 6.2, z: z - 2, seed: 20 + i }]),
+    { name: 'jangdokdae', x: -4.5, z: -36, seed: 31 }, { name: 'jangdokdae', x: 5.5, z: -80, seed: 32 }, { name: 'jangdokdae', x: 4, z: -108, seed: 33 },
+    { name: 'haystack', x: 6.5, z: -52, seed: 41, scale: 1.3 }, { name: 'haystack', x: -6.5, z: -104, seed: 42, scale: 1.2 }, { name: 'haystack', x: -3, z: -10, seed: 43 },
+    { name: 'well', x: 5, z: -14, seed: 51 },
+    { name: 'sotdae', x: -7, z: -60, seed: 61 },
+    { name: 'ding-censer', x: 0, z: -140, seed: 71, scale: 1.4 },
+    ...[-26, -40, -62, -76, -90].map((z, i) => ({ name: 'stone-wall', x: i % 2 ? 9.5 : -9.5, z, seed: 80 + i, yaw: Math.PI / 2, length: 5 })),
+    { name: 'brush-fence', x: -8.5, z: -50, seed: 91, yaw: Math.PI / 2, width: 4 }, { name: 'brush-fence', x: 8.5, z: -100, seed: 92, yaw: Math.PI / 2, width: 4 },
+    { name: 'chicken-coop', x: 7, z: -34, seed: 95 }, { name: 'jige', x: -6, z: -22, seed: 96 },
+  ],
   spawn: { x: 0, z: -105, halfW: 20 },                    // 궁 정문 앞 광장에서 쏟아진다
 };
 
@@ -76,7 +92,7 @@ function buildingRecord(kind, root, scene) {
   // 부위별 체력: 부피가 클수록 단단하다. 지붕(위쪽)은 얇고 잘 부서지게.
   for (const p of partInfo) {
     const h = (p.center.y - bounds.min.y) / Math.max(1e-3, bounds.max.y - bounds.min.y);
-    p.hp = 4 + Math.cbrt(p.volume) * 12 * (h > 0.6 ? 0.5 : 1);
+    p.hp = kind === 'prop' ? 1.5 + Math.cbrt(p.volume) * 3 : 4 + Math.cbrt(p.volume) * 12 * (h > 0.6 ? 0.5 : 1);
   }
   return {
     kind, root, merged, bounds, parts: partInfo,
@@ -103,6 +119,13 @@ export function buildWorld(scene) {
     b.position.set(h.x, 0, h.z);
     b.rotation.y = h.yaw;
     buildings.push(buildingRecord(h.style, b, scene));
+  }
+
+  for (const pr of LAYOUT.props) {
+    const { name, x, z, yaw = 0, ...opts } = pr;
+    const g = buildProp(name, { seed: 1, scale: 1, ...opts });
+    g.position.set(x, 0, z); g.rotation.y = yaw;
+    buildings.push(buildingRecord('prop', g, scene));
   }
 
   // 사찰 언덕 (단순 흙더미)

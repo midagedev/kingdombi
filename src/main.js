@@ -116,6 +116,7 @@ console.log('[kb] world built ms', (performance.now() - t0).toFixed(0), 'buildin
 const physics = await createPhysics(scene);
 // 살아있는 건물은 파편·시체가 통과하지 못하게 정적 박스
 for (const b of world.buildings) {
+  if (b.kind === 'prop') continue;   // 소품은 정적 콜라이더 없음(파편·시체가 통과)
   const c = b.bounds.getCenter(new THREE.Vector3()), s = b.bounds.getSize(new THREE.Vector3());
   b.staticCollider = physics.world.createCollider(physics.RAPIER.ColliderDesc.cuboid(s.x / 2, s.y / 2, s.z / 2).setTranslation(c.x, c.y, c.z).setCollisionGroups(0x0002FFFF)); // 그룹 2: 총알 레이가 무시
 }
