@@ -111,6 +111,8 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
   void main() {
     vBone = aBone; vHit = iHit; vType = iType;
     vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
+    float shred = exp(-(uTime - iHit) * 16.0) * (1.0 - uDead);
+    p.xz += vec2(sin(uTime * 190.0 + position.y * 31.0), cos(uTime * 163.0 + position.x * 27.0)) * 0.06 * shred;
     vModel = position;
     vec4 wp = instanceMatrix * vec4(p, 1.0);
     vWorld = (modelMatrix * wp).xyz;
@@ -392,7 +394,7 @@ export function createHorde(scene, physics, {
   function damage(i, amount, dirX, dirZ, time, force = 9) {
     iHit.setX(i, time);
     hp[i] -= amount;
-    if (hp[i] > 0) { const kb = 5.5 / (scale[i] * scale[i]); vx[i] -= dirX * kb; vz[i] -= dirZ * kb; stagger[i] = Math.max(stagger[i], 0.45 / scale[i]); return false; }
+    if (hp[i] > 0) { const kb = 1.0 / (scale[i] * scale[i]); /* 개틀링은 밀지 않고 탄막 안에 붙잡는다(경직이 발을 묶음) */ vx[i] -= dirX * kb; vz[i] -= dirZ * kb; stagger[i] = Math.max(stagger[i], 0.45 / scale[i]); return false; }
     kill(i, dirX, dirZ, time, force);
     return true;
   }
@@ -401,7 +403,7 @@ export function createHorde(scene, physics, {
     alive[i] = 0; stats.kills++;
     hooks.onKill?.(type[i], px[i], pz[i], time);
     respawnAt[i] = time + 2.5 + Math.random() * 4;
-    const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: 0.8 + Math.random() * 1.2, z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
+    const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);

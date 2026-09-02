@@ -187,8 +187,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       let dmg = 2.6;
       for (const h of zh) {
         if (h.t > t) break;
-        const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 10);
+        const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 2);
         fx.blood.burst(h.x, h.y, h.z, killed ? 10 : 4, { dirX: _d.x * 0.8, dirY: 0.25, dirZ: _d.z * 0.8, spread: 0.7, power: 5, scale: 1, time });
+        fx.gibs.burst(h.x, h.y, h.z, killed ? 8 : 2, { dirX: _d.x * 0.6, dirY: 0.35, dirZ: _d.z * 0.6, spread: 0.9, power: 4, scale: 1, time });
         fx.decals.add(h.x, h.z, killed ? 1.6 + Math.random() : 0.5 + Math.random() * 0.5, time);
         dmg *= 0.7;
       }

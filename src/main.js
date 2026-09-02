@@ -125,6 +125,7 @@ for (const b of world.buildings) {
 const fx = {
   shards: createDebris(scene, { count: 700, color: 0x8d8b86, size: 0.13, gravity: -30, life: 2.6 }),
   blood: createDebris(scene, { count: 500, layer: LAYER_SPOT, color: 0xc1121f, size: 0.1, gravity: -32, bounce: 0.02, life: 1.1 }),
+  gibs: createDebris(scene, { count: 400, color: 0x141210, size: 0.09, gravity: -30, bounce: 0.05, life: 1.6 }),   // 살점: 잉크색, 세계 레이어
   decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
 };
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
@@ -140,6 +141,7 @@ horde.hooks.onExplode = (x, z, time) => {
   const R = 6.5;
   fx.blood.burst(x, 1.2, z, 40, { dirY: 0.8, spread: 1.6, power: 12, scale: 1.4, time });
   fx.shards.burst(x, 0.5, z, 30, { dirY: 1.0, spread: 1.5, power: 10, scale: 0.9, time });
+  fx.gibs.burst(x, 1.0, z, 30, { dirY: 0.9, spread: 1.6, power: 11, scale: 1.3, time });
   fx.decals.add(x, z, 4.5, time);
   look.state.flash = Math.max(look.state.flash, 0.5);
   audio.collapse(0.9);
@@ -235,7 +237,7 @@ renderer.setAnimationLoop((now) => {
     if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
     gun.update(dt, time);
     physics.step(dt, time);
-    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.decals.update(time);
+    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.gibs.update(dt, time); fx.decals.update(time);
     audio.setGroan(Math.min(1, horde.stats.alive / 200) * 0.3);
   } else {
     horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경)
