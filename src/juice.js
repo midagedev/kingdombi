@@ -70,12 +70,12 @@ export function createJuice(hud) {
     const pips = Math.min(10, Math.floor(st.kills / 100));
     return [
       '🌑 킹덤비 · 조선 느와르 좀비 개틀링',
-      st.win ? `새벽을 보았다${st.isRecord ? ' — 신기록' : ''}` : `${fmt(st.time)} 만에 포대가 무너졌다${st.isRecord ? ' — 신기록' : ''}`,
+      st.win ? `새벽을 보았다${st.isRecord ? ' — 신기록' : ''}` : `${fmt(st.time)} 만에 마차가 멈췄다${st.isRecord ? ' — 신기록' : ''}`,
       '',
-      `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴`,
+      `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴 · 궁궐까지 ${st.reachedM ?? 0} m`,
       pips ? '🩸'.repeat(pips) : '🌑 흑백의 밤',
       '',
-      '너는 새벽까지 버틸 수 있나 → https://midagedev.github.io/kingdombi/',
+      '너는 궁궐까지 갈 수 있나 → https://midagedev.github.io/kingdombi/',
     ].join('\n');
   }
   async function copy(text) {

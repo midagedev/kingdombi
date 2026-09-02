@@ -35,16 +35,16 @@ export function createNightlife(scene, buildings, { playerZ = 30, maxLights = 2 
     // 처마 등롱: 남쪽(+z, 플레이어 쪽) 정면 양 끝 처마 밑에 하나씩. 궁궐·절은 정면 폭을 따라 여럿.
     const { min, max } = b.bounds;
     const eaveY = b.kind === 'palace' ? 7.5 : b.kind === 'temple' ? min.y + 5.2 : min.y + 3.1;
-    const n = b.kind === 'palace' ? 6 : b.kind === 'temple' ? 3 : 2;
+    const n = b.kind === 'palace' ? 6 : b.kind === 'temple' ? 3 : 1;   // 집 50채 × 등롱 3메시 — 하나씩만
     for (let k = 0; k < n; k++) {
       const t = n === 1 ? 0.5 : (k + 0.5) / n;
       const x = THREE.MathUtils.lerp(min.x + 1.2, max.x - 1.2, t);
       const z = max.z - (b.kind === 'palace' ? 3.5 : 0.9);
-      addLantern(x, eaveY, z, litHouses.has(b) && k === 0);
+      addLantern(x, eaveY, z, litHouses.has(b) && k === 0, b);
     }
   }
 
-  function addLantern(x, y, z, withLight) {
+  function addLantern(x, y, z, withLight, b) {
     const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
     // 끈 + 종이 몸통(세계 레이어, 어둡게) + 불(스팟)
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 4), new THREE.MeshBasicMaterial({ color: 0x111111 })); cord.position.y = 0.25; g.add(cord);
@@ -54,7 +54,7 @@ export function createNightlife(scene, buildings, { playerZ = 30, maxLights = 2 
     const fire = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat); fire.scale.set(1, 1.25, 1); fire.position.y = -0.3; fire.layers.set(LAYER_SPOT); g.add(fire);
     let light = null;
     if (withLight) { light = new THREE.PointLight(0xffb347, 22, 15, 1.9); light.position.y = -0.4; g.add(light); }
-    lanterns.push({ mat, light, body, phase: Math.random() * 20, group: g });
+    lanterns.push({ mat, light, body, phase: Math.random() * 20, group: g, b, alive: true });
   }
 
   let t = 0;
@@ -66,6 +66,8 @@ export function createNightlife(scene, buildings, { playerZ = 30, maxLights = 2 
       w.worldMat.emissiveIntensity = w.base * f * 2.2;
     }
     for (const l of lanterns) {
+      l.group.visible = l.alive && l.b.merged.visible;   // 마차에서 먼 집이 꺼지면 등롱도 꺼진다
+      if (!l.group.visible) continue;
       const f = candleFlicker(t, l.phase);
       l.mat.color.copy(LANTERN).multiplyScalar(f);
       if (l.light) l.light.intensity = 22 * f;
@@ -77,7 +79,7 @@ export function createNightlife(scene, buildings, { playerZ = 30, maxLights = 2 
     for (const l of lanterns) {
       const p = l.group.position;
       if (p.x >= b.bounds.min.x - 2 && p.x <= b.bounds.max.x + 2 && p.z >= b.bounds.min.z - 2 && p.z <= b.bounds.max.z + 4) {
-        l.group.visible = false; if (l.light) l.light.intensity = 0; l.light = null;
+        l.alive = false; l.group.visible = false; if (l.light) l.light.intensity = 0; l.light = null;
       }
     }
   }

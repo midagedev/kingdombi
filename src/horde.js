@@ -236,7 +236,8 @@ export function createHorde(scene, physics, {
     { speed: [3.2, 4.2], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },       // 폭탄: 도달 즉시 폭발(1회)
     { speed: [6.5, 8.0], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 0.7 },
   ];
-  const rollType = () => { const r = Math.random(); return r < 0.035 ? 1 : r < 0.12 ? 2 : r < 0.28 ? 3 : 0; };
+  const mix = { brute: 0.035, bomber: 0.085, runner: 0.16 };   // 정차 지점마다 연출자가 바꾼다
+  const rollType = () => { const r = Math.random(); return r < mix.brute ? 1 : r < mix.brute + mix.bomber ? 2 : r < mix.brute + mix.bomber + mix.runner ? 3 : 0; };
   const respawnAt = new Float32Array(N);
   const attackT = new Float32Array(N);   // 포대 앞 공격 타이머
   const stagger = new Float32Array(N);   // 피격 경직(초)
@@ -246,8 +247,8 @@ export function createHorde(scene, physics, {
   const hooks = { onExplode: null, onKill: null };
 
   function reset(i, time) {
-    px[i] = spawn.x + (Math.random() - 0.5) * 2 * spawn.halfW;
-    pz[i] = spawn.z - Math.random() * 30;
+    if (spawn.pick) { const s = spawn.pick(); px[i] = s.x; pz[i] = s.z; }
+    else { px[i] = spawn.x + (Math.random() - 0.5) * 2 * spawn.halfW; pz[i] = spawn.z - Math.random() * 30; }
     vx[i] = 0; vz[i] = 0;
     yaw[i] = 0;
     const ty = rollType(); type[i] = ty; const T = TYPES[ty];
@@ -260,16 +261,18 @@ export function createHorde(scene, physics, {
     respawnAt[i] = 0;
   }
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < N; i++) { reset(i, 0); pz[i] += 60 - Math.random() * 70; }
+  for (let i = 0; i < N; i++) { reset(i, 0); if (!spawn.pick) pz[i] += 60 - Math.random() * 70; }
   iPhase.needsUpdate = true; iSpeed.needsUpdate = true;
 
   // 건물 회피용 원(둘레 원으로 근사 — 골목이 열려 있으면 충분)
   // 집은 넉넉히 피하고, 석탑 같은 작은 장애물은 스치듯 지나간다(골목 한복판에서 떼가 뭉치지 않게)
-  const obstacles = buildings.filter((b) => { const sz = b.bounds.getSize(new THREE.Vector3()); return Math.max(sz.x, sz.z) > 3; }).map((b) => {
+  const allObstacles = buildings.filter((b) => { const sz = b.bounds.getSize(new THREE.Vector3()); return Math.max(sz.x, sz.z) > 3; }).map((b) => {
     const c = b.bounds.getCenter(new THREE.Vector3()); const sz = b.bounds.getSize(new THREE.Vector3());
     const small = Math.max(sz.x, sz.z) < 8;
     return { x: c.x, z: c.z, hx: sz.x / 2 + (small ? 0.1 : 0.6), hz: sz.z / 2 + (small ? 0.1 : 0.6), margin: small ? 0.5 : 1.5, b };
   });
+  // 레일 위 마차 근처(±90m) 장애물만 매 0.5초 골라 쓴다 — 길 전체 50채를 좀비 360마리가 매 프레임 훑지 않게
+  let obstacles = allObstacles, obstacleZ = Infinity;
 
   // 공간 해시(분리력)
   const CELL = 1.6, GRID = 64;
@@ -278,6 +281,7 @@ export function createHorde(scene, physics, {
 
   function update(dt, time) {
     uniforms.uTime.value = time; deadUniforms.uTime.value = time;
+    if (Math.abs(target.z - obstacleZ) > 20) { obstacleZ = target.z; obstacles = allObstacles.filter((o) => Math.abs(o.z - obstacleZ) < 110); }
     cellHead.fill(-1);
     for (let i = 0; i < N; i++) { if (!alive[i]) continue; const c = cellOf(px[i], pz[i]); next[i] = cellHead[c]; cellHead[c] = i; }
 
@@ -288,6 +292,8 @@ export function createHorde(scene, physics, {
         if (respawnAt[i] && time > respawnAt[i]) reset(i, time);
         else { m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       }
+      // 낙오: 마차 뒤로 45m 넘게 처지면 조용히 앞으로 재배치한다(시체 없이) — 떼는 항상 앞에 있어야 한다
+      if (pz[i] > target.z + 45) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // seek
       let dx = tx - px[i], dz = tz - pz[i];
@@ -409,6 +415,19 @@ export function createHorde(scene, physics, {
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);
   }
 
+  // 들이받기: 마차 정면 쐐기 구역(폭 ±halfW, 앞 front ~ 뒤 back) 안 좀비는 옆·앞으로 날아간다
+  function ram(x, z, halfW, front, back, time) {
+    let n = 0;
+    for (let i = 0; i < N; i++) {
+      if (!alive[i]) continue;
+      const dx = px[i] - x, dz = pz[i] - z;
+      if (Math.abs(dx) > halfW || dz > back || dz < -front) continue;
+      const sx = Math.sign(dx || (Math.random() - 0.5));
+      kill(i, sx * 0.8, -0.6, time, 9); n++;
+    }
+    return n;
+  }
+
   // 파편에 깔림: 큰 파편 근처 좀비 즉사
   function crushNear(x, z, radius, time) {
     const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL), rr = radius * radius;
@@ -425,5 +444,5 @@ export function createHorde(scene, physics, {
     return n;
   }
 
-  return { update, raycast, damage, kill, crushNear, stats, hooks, px, pz, alive, type, scale, N, body, glow, uniforms };
+  return { update, raycast, damage, kill, crushNear, ram, mix, stats, hooks, px, pz, alive, type, scale, N, body, glow, uniforms };
 }

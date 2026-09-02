@@ -12,7 +12,7 @@ export async function createPhysics(scene) {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -16, z: 0 });
   world.timestep = 1 / 60;
-  world.createCollider(RAPIER.ColliderDesc.cuboid(500, 1, 500).setTranslation(0, -1, 0).setFriction(1.1));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(5000, 1, 5000).setTranslation(0, -1, 0).setFriction(1.1));
 
   // ── 시체 풀 ──
   const corpses = [];

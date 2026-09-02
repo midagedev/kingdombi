@@ -22,22 +22,13 @@ function makeFlashTexture() {
   const t = new THREE.CanvasTexture(c); return t;
 }
 
-export function createGun(scene, physics, horde, buildings, fx, audio, look, { position, onCollapse }) {
-  // ── 모델 ──
-  const root = new THREE.Group(); root.position.copy(position); scene.add(root);
-  // 돌 단 + 화차 수레
-  const platform = box(6, 0.5, 5, new THREE.MeshStandardMaterial({ color: 0x070707, roughness: 1 })); platform.position.y = -0.25; root.add(platform);
-  const bed = box(1.6, 0.14, 2.2, WOOD); bed.position.y = 0.62; root.add(bed);
-  for (const sx of [-1, 1]) {
-    const wheel = cyl(0.62, 0.12, WOOD, 16); wheel.rotation.z = Math.PI / 2; wheel.position.set(sx * 0.95, 0.62, 0.2); root.add(wheel);
-    for (let k = 0; k < 6; k++) { const sp = box(0.05, 1.1, 0.05, WOOD); sp.rotation.x = k * Math.PI / 6; wheel.add(sp); }
-    const hub = cyl(0.12, 0.2, IRON); hub.rotation.z = Math.PI / 2; hub.position.set(sx * 0.95, 0.62, 0.2); root.add(hub);
-    const handle = box(0.08, 0.08, 1.6, WOOD); handle.position.set(sx * 0.6, 0.72, 1.6); handle.rotation.x = -0.25; root.add(handle);
-  }
-  const axle = cyl(0.05, 2.0, IRON); axle.rotation.z = Math.PI / 2; axle.position.set(0, 0.62, 0.2); root.add(axle);
-  const post = cyl(0.1, 0.7, IRON); post.position.set(0, 1.05, -0.1); root.add(post);
+export function createGun(scene, physics, horde, buildings, fx, audio, look, { parent = scene, onCollapse }) {
+  // ── 모델: 포좌(parent = 마차 mount) 위 받침 기둥 + 6열 개틀링 ──
+  const root = new THREE.Group(); parent.add(root);
+  const base = cyl(0.34, 0.12, IRON, 16); base.position.y = 0.06; root.add(base);
+  const post = cyl(0.1, 0.9, IRON); post.position.set(0, 0.55, 0); root.add(post);
 
-  const yawPivot = new THREE.Group(); yawPivot.position.set(0, 1.42, -0.1); root.add(yawPivot);
+  const yawPivot = new THREE.Group(); yawPivot.position.set(0, 1.0, 0); root.add(yawPivot);
   const pitchPivot = new THREE.Group(); yawPivot.add(pitchPivot);
   // 요크
   const yoke = box(0.46, 0.08, 0.5, IRON); yoke.position.set(0, -0.02, 0); pitchPivot.add(yoke);
@@ -268,8 +259,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     el.addEventListener('pointerdown', (e) => { active = true; lastX = e.clientX; lastY = e.clientY; state.firing = true; el.setPointerCapture?.(e.pointerId); });
     el.addEventListener('pointermove', (e) => {
       if (!active) return;
-      state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.05, 1.05);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.58, 0.18);
+      state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.5, 1.5);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.62, 0.2);
       lastX = e.clientX; lastY = e.clientY;
     });
     const stop = () => { active = false; state.firing = false; };
