@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
-    "cheoma": "file:../cheoma",
+    "cheoma": "github:midagedev/cheoma#53b7f56b9c62cc8ff21bb87d680c22714f35ac73",
     "three": "0.185.1"
   },
   "devDependencies": {
