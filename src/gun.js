@@ -69,9 +69,12 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
   // 트레이서
   const TRACERS = 40;
-  const tracer = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 0.05, 1), new THREE.MeshBasicMaterial({ color: 0xfff1c4 }), TRACERS);
+  const tracer = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 1), new THREE.MeshBasicMaterial({ color: 0xffc070 }), TRACERS);
   tracer.layers.set(LAYER_SPOT); tracer.frustumCulled = false; tracer.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(tracer);
   const tracerBorn = new Float32Array(TRACERS).fill(-1e9); let tracerCursor = 0;
+  // 예광탄은 탄띠에서 다섯 발에 하나. 레이저가 아니라 4.5m 짧은 불꽃 줄기가 320 m/s 로 날아가 목표에서 꺼진다.
+  const TRACER_EVERY = 5, TRACER_SPEED = 320, TRACER_LEN = 4.5;
+  const tOrg = new Float32Array(TRACERS * 3), tDir = new Float32Array(TRACERS * 3), tLen = new Float32Array(TRACERS);
 
   // ── 상태 ──
   const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0 };
@@ -84,11 +87,24 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
   function spawnTracer(ox, oy, oz, hx, hy, hz, time) {
     const i = tracerCursor; tracerCursor = (tracerCursor + 1) % TRACERS;
-    _mid.set((ox + hx) / 2, (oy + hy) / 2, (oz + hz) / 2);
-    _d.set(hx - ox, hy - oy, hz - oz); const len = _d.length(); _d.normalize();
-    _q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), _d);
-    _s.set(1, 1, len);
-    _m.compose(_mid, _q, _s); tracer.setMatrixAt(i, _m); tracerBorn[i] = time;
+    _d.set(hx - ox, hy - oy, hz - oz); tLen[i] = _d.length(); _d.normalize();
+    tOrg[i * 3] = ox; tOrg[i * 3 + 1] = oy; tOrg[i * 3 + 2] = oz;
+    tDir[i * 3] = _d.x; tDir[i * 3 + 1] = _d.y; tDir[i * 3 + 2] = _d.z;
+    tracerBorn[i] = time;
+  }
+  const _fwd = new THREE.Vector3(0, 0, 1);
+  function updateTracers(time) {
+    for (let i = 0; i < TRACERS; i++) {
+      if (tracerBorn[i] < -1e8) continue;
+      const head = (time - tracerBorn[i]) * TRACER_SPEED, tail = Math.max(0, head - TRACER_LEN);
+      if (tail >= tLen[i]) { _m.makeScale(0, 0, 0); tracer.setMatrixAt(i, _m); tracerBorn[i] = -1e9; continue; }
+      const h = Math.min(head, tLen[i]), midT = (h + tail) / 2;
+      _d.set(tDir[i * 3], tDir[i * 3 + 1], tDir[i * 3 + 2]);
+      _mid.set(tOrg[i * 3] + _d.x * midT, tOrg[i * 3 + 1] + _d.y * midT, tOrg[i * 3 + 2] + _d.z * midT);
+      _q.setFromUnitVectors(_fwd, _d); _s.set(1, 1, Math.max(0.2, h - tail));
+      _m.compose(_mid, _q, _s); tracer.setMatrixAt(i, _m);
+    }
+    tracer.instanceMatrix.needsUpdate = true;
   }
 
   // 건물 히트스캔: 경계 AABB → 부위 AABB. 가장 가까운 부위 반환.
@@ -195,7 +211,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       }
       audio.hitFlesh();
     }
-    if (state.shots % 2 === 0) spawnTracer(_o.x, _o.y, _o.z, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
+    if (state.shots % TRACER_EVERY === 0) spawnTracer(_o.x, _o.y, _o.z, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
 
     state.heat = Math.min(1, state.heat + 0.0045);
     state.recoil = Math.min(1, state.recoil + 0.35);
@@ -235,8 +251,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     // 트레이서 수명
-    for (let i = 0; i < TRACERS; i++) if (time - tracerBorn[i] > 0.055 && time - tracerBorn[i] < 1) { _m.makeScale(0, 0, 0); tracer.setMatrixAt(i, _m); tracerBorn[i] = -1e9; }
-    tracer.instanceMatrix.needsUpdate = true;
+    updateTracers(time);
     pumpCollapse(time);
     // 파편 낙하로 좀비 압사: 빠르게 움직이는 큰 파편 주변
     for (const c of physics.chunks) {
