@@ -207,7 +207,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.coreExposed = () => b.platesLeft('skull') === 0;
     b.coreGlow = core.material; b.aimCore = coreDark;
     b.onPlateLost = () => { if (b.coreExposed()) juice.banner('심장이 드러났다', 2000); };
-    b.score = 50000; b.holdDist = 20;   // 궁궐 정문(-475) 앞에 서야 총알이 문루에 먹히지 않는다
+    b.score = 50000; b.holdDist = 20; b.minZ = z + 22;   // 궁궐 정문(-475) 앞에 서야 총알이 문루에 먹히지 않는다 — 스폰점보다 22m 앞(≈-468)까지만 물러난다
     b.tick = (dt, time) => {
       const vp = vehicle.pos; const dz = vp.z - root.position.z; const dist = Math.abs(dz);
       const face = Math.atan2(vp.x - root.position.x, dz) + Math.PI;   // 모델은 -z 를 본다
@@ -218,7 +218,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       let moving = 0;
       if (b.state === 'enter') { if (b.stateT < 1.4) { if (b.stateT < dt) { audio.roar?.(1); look.state.flash = Math.max(look.state.flash, 0.5); game.shake = 1.5; horde.crushNear(root.position.x, root.position.z, 16, time); } } else { b.state = 'hold'; b.stateT = 0; } }   // 등장 포효: 반경 16m 떼가 날아간다
       else if (b.state === 'hold') {
-        if (dist > b.holdDist + 2) { root.position.z += Math.sign(dz) * 4 * dt; moving = 1; }
+        if (dist > b.holdDist + 2 || root.position.z < b.minZ) { root.position.z += Math.sign(dz) * 4 * dt; moving = 1; }
         // 먹기: 대기 1초 뒤 머리 근처 좀비 하나를 물어 올린다(시체가 턱에서 떨어진다)
         if (b.stateT > 1.0 && !b.ate) { b.ate = true; headG.getWorldPosition(_w); let best = -1, bd = 81; for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const dx = horde.px[i] - _w.x, dz2 = horde.pz[i] - _w.z, d2 = dx * dx + dz2 * dz2; if (d2 < bd) { bd = d2; best = i; } } if (best >= 0) { horde.kill(best, 0, 0, time, 2); fx.blood.burst(_w.x, _w.y - 0.8, _w.z, 26, { dirY: 0.2, spread: 1.0, power: 6, scale: 1.3, time }); fx.gibs.burst(_w.x, _w.y - 0.8, _w.z, 14, { dirY: 0.1, spread: 0.9, power: 5, scale: 1.2, time }); audio.hitFlesh(); b.eatT = b.t; } }
         if (b.stateT > (phase === 1 ? 3.2 : 2.2)) { b.state = phase >= 2 && Math.random() < 0.55 ? 'stomp' : 'charge'; b.stateT = 0; b.ate = false; if (b.state === 'stomp') audio.roar?.(0.7); }
@@ -229,7 +229,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
         if (b.stateT > 0.42 && !b.bit) { b.bit = true; onDamage(22); look.state.flash = Math.max(look.state.flash, 0.45); game.shake = 1.6; audio.collapse(0.7); fx.blood.burst(vp.x, 3, vp.z - 2, 20, { dirY: 0.7, spread: 1.4, power: 8, scale: 1.2, time }); }
         if (b.stateT > 1.0) { b.state = 'retreat'; b.stateT = 0; b.bit = false; }
       } else if (b.state === 'retreat') {
-        if (dist < b.holdDist) { root.position.z -= Math.sign(dz) * 6 * dt; moving = 1; } else { b.state = 'hold'; b.stateT = 0; }
+        if (dist < b.holdDist && root.position.z - Math.sign(dz) * 6 * dt >= b.minZ) { root.position.z -= Math.sign(dz) * 6 * dt; moving = 1; } else { b.state = 'hold'; b.stateT = 0; }
       } else if (b.state === 'stomp') {
         if (b.stateT > 0.7 && !b.threw) { b.threw = true; game.shake = 1.0; audio.stomp?.(); const n = phase === 3 ? 2 : 1; for (let k = 0; k < n; k++) throwChunk(root, k, time); }
         if (b.stateT > 1.6) { b.state = 'hold'; b.stateT = 0; b.threw = false; }

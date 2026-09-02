@@ -33,6 +33,11 @@ const CSS = `
   #end button { font: 300 12px/1 var(--serif); letter-spacing:.3em; padding: 10px 2px; background:transparent; color: var(--ink); border:0; border-bottom: 1px solid rgba(233,230,223,.35); cursor:pointer; }
   #end button:first-child { border-bottom-color: var(--red); }
   #end .hint { margin-top: 26px; font: 300 10px/1.8 var(--serif); letter-spacing:.2em; opacity:.4; }
+  #end .credits { margin-top: 22px; font: 300 10px/2 var(--mono); letter-spacing:.14em; opacity:.55; pointer-events:auto; }
+  #end .credits a { color: #e6c87a; text-decoration:none; border-bottom: 1px solid rgba(230,200,122,.4); }
+  #end .credits .roll { font-family: var(--serif); letter-spacing:.3em; opacity:.8; margin-bottom: 4px; }
+  #credit { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 16px); transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; white-space:nowrap; pointer-events:auto; }
+  #credit a { color: inherit; text-decoration:none; }
   #best { position:absolute; left:50%; bottom: 13%; transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; white-space:nowrap; }
 `;
 
@@ -45,6 +50,9 @@ export function rankOf(score) { return RANKS.find(([, min]) => score >= min)[0];
 export function createJuice(hud) {
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
   for (const id of ['stamp', 'combo', 'banner', 'pops', 'best']) { const d = document.createElement('div'); d.id = id; hud.appendChild(d); }
+  // 타이틀 하단 크레딧(첫 터치 전에만 보인다 — 시작하면 main 이 숨긴다)
+  const credit = document.createElement('div'); credit.id = 'credit'; credit.innerHTML = '<a href="https://x.com/midagedev" target="_blank" rel="noopener">@midagedev</a> · <a href="https://github.com/midagedev/kingdombi" target="_blank" rel="noopener">github</a>'; hud.appendChild(credit);
+  credit.addEventListener('pointerdown', (e) => e.stopPropagation());
   const $ = (id) => document.getElementById(id);
   const stampEl = $('stamp'), comboEl = $('combo'), bannerEl = $('banner'), popsEl = $('pops'), bestEl = $('best');
 
@@ -97,7 +105,7 @@ export function createJuice(hud) {
       `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴`,
       pips ? '🩸'.repeat(pips) : '🌑 흑백의 밤',
       '',
-      '너는 궁궐까지 갈 수 있나 → https://midagedev.github.io/kingdombi/',
+      '너는 궁궐까지 갈 수 있나 → https://midagedev.github.io/kingdombi/  by @midagedev',
     ].join('\n');
   }
   async function copy(text) {
@@ -153,10 +161,12 @@ export function createJuice(hud) {
       </div>
       <div class="hs">${rows}</div>
       <div class="btns"><button id="btnShare">전적 공유</button><button id="btnPng">장면 저장</button><button id="btnRetry">다시</button></div>
-      <div class="hint">${qualifies ? '이름 석 자를 남기고 ' : ''}화면을 누르면 다시 밤으로</div></div>`;
+      <div class="hint">${qualifies ? '이름을 눌러 석 자를 남기고 ' : ''}화면을 누르면 다시 밤으로</div>
+      <div class="credits">${st.win ? '<div class="roll">킹덤비 · 조선 느와르 좀비 개틀링<br>기획·개발 midagedev · 건축 생성 cheoma · 음악 자작(Suno)<br>three.js · Rapier · 모델은 전부 절차생성</div>' : ''}<a href="https://x.com/midagedev" target="_blank" rel="noopener">@midagedev</a> · <a href="https://github.com/midagedev/kingdombi" target="_blank" rel="noopener">github.com/midagedev/kingdombi</a></div></div>`;
     endEl.style.opacity = 1; endEl.style.pointerEvents = 'auto';
     const stop = (e) => e.stopPropagation();
     for (const id of ['btnShare', 'btnPng', 'btnRetry']) endEl.querySelector('#' + id).addEventListener('pointerdown', stop);
+    for (const a of endEl.querySelectorAll('.credits a')) a.addEventListener('pointerdown', stop);
     const saveHs = () => { if (!qualifies) return; const inp = endEl.querySelector('#hsName'); entry.name = (inp?.value || 'AAA').toUpperCase().padEnd(3, 'A').slice(0, 3); localStorage.setItem('kb.hs', JSON.stringify(table)); };
     const inp = endEl.querySelector('#hsName');
     if (inp) { inp.addEventListener('pointerdown', stop); inp.addEventListener('change', saveHs); inp.addEventListener('input', saveHs); setTimeout(() => inp.focus(), 400); }
@@ -164,7 +174,7 @@ export function createJuice(hud) {
     endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = await share(st); });
     endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : '프레임 없음'; });
     endEl.querySelector('#btnRetry').addEventListener('click', restart);
-    endEl.addEventListener('pointerdown', (e) => { if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') restart(); });
+    endEl.addEventListener('pointerdown', (e) => { if (!['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) restart(); });
   }
 
   return { stamp, banner, pop, onKill, update, endCard, mult, get maxCombo() { return maxCombo; } };

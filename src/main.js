@@ -268,7 +268,7 @@ addEventListener('resize', resize); resize();
 function insertCoin() {
   game.started = true; game.credits = 1;
   audio.start(); audio.coin(); setTimeout(() => audio.setBgm('wave'), 700);
-  $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); $('bomb').classList.add('on');
+  $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
   if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z + 0.5; director.stopKills0 = horde.stats.kills - ROUTE.stops[i].quota; director.district = districtAt(vpos.z); cullBuildings(); }
@@ -321,7 +321,10 @@ function updateDirector(dt, time) {
     vehicle.state.targetSpeed = 0; director.readyT += dt;
     if (director.readyT > 1.6) { director.phase = 'drive'; juice.banner('GO', 900); juice.stamp('進'); }
   } else if (director.phase === 'drive') {
-    vehicle.state.targetSpeed = 7.5;
+    // 정차 지점 앞에서 미리 감속(v²/2a ≈ 5 m) — 넘어가서 서면 恐龍이 문루 안에 서게 된다
+    const stop0 = ROUTE.stops[director.stopIdx];
+    vehicle.state.targetSpeed = stop0 && vpos.z <= stop0.z + (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) + 0.5 ? 0 : 7.5;
+    if (stop0 && vehicle.state.speed < 0.05 && vpos.z > stop0.z && vpos.z <= stop0.z + 6) vpos.z = stop0.z;   // 미세 오차는 그냥 맞춘다
     const d = districtAt(vpos.z);
     if (d !== director.district) { director.district = d; if (time > 3) juice.banner(d.name, 2600); }
     if (stop && vpos.z <= stop.z) {
