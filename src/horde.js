@@ -216,13 +216,16 @@ export function createHorde(scene, physics, {
   const type = new Uint8Array(N);
   // 0 보통 · 1 거대(느리고 단단, 도달 시 큰 피해) · 2 폭탄(죽으면 폭발) · 3 질주(작고 빠름)
   const TYPES = [
-    { speed: [6.5, 10], hp: [3, 5], scale: [0.9, 1.12], reachDmg: 1.5 },
-    { speed: [3.4, 4.2], hp: [42, 55], scale: [2.0, 2.3], reachDmg: 14 },
-    { speed: [5.5, 7.5], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },
-    { speed: [11, 13.5], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 1 },
+    { speed: [6.5, 10], hp: [3, 5], scale: [0.9, 1.12], reachDmg: 1.0 },      // reachDmg = 포대 앞에서 1초마다 주는 피해
+    { speed: [3.4, 4.2], hp: [42, 55], scale: [2.0, 2.3], reachDmg: 8 },
+    { speed: [5.5, 7.5], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },       // 폭탄: 도달 즉시 폭발(1회)
+    { speed: [11, 13.5], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 0.7 },
   ];
   const rollType = () => { const r = Math.random(); return r < 0.035 ? 1 : r < 0.12 ? 2 : r < 0.28 ? 3 : 0; };
   const respawnAt = new Float32Array(N);
+  const attackT = new Float32Array(N);   // 포대 앞 공격 타이머
+  const stagger = new Float32Array(N);   // 피격 경직(초)
+  const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
   const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0 };
   const hooks = { onExplode: null };
@@ -273,7 +276,8 @@ export function createHorde(scene, physics, {
       let dx = tx - px[i], dz = tz - pz[i];
       const dist = Math.hypot(dx, dz) || 1;
       dx /= dist; dz /= dist;
-      let ax = dx * 1.0, az = dz * 1.0;
+      const nearStop = dist < STOP_DIST + 1.5;
+      let ax = dx * (nearStop ? 0.15 : 1.0), az = dz * (nearStop ? 0.15 : 1.0);
       // 분리
       const cx = Math.floor(px[i] / CELL), cz = Math.floor(pz[i] / CELL);
       for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) {
@@ -300,7 +304,8 @@ export function createHorde(scene, physics, {
         }
       }
       const al = Math.hypot(ax, az) || 1;
-      const sp = speed[i];
+      if (stagger[i] > 0) stagger[i] -= dt;
+      const sp = stagger[i] > 0 ? speed[i] * 0.15 : speed[i];
       vx[i] += ((ax / al) * sp - vx[i]) * Math.min(1, dt * 6);
       vz[i] += ((az / al) * sp - vz[i]) * Math.min(1, dt * 6);
       px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
@@ -308,11 +313,12 @@ export function createHorde(scene, physics, {
       let dy = ty - yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       yaw[i] += dy * Math.min(1, dt * 10);
 
-      if (dist < 3.2 + scale[i]) { // 포대 도달
-        stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; alive[i] = 0; respawnAt[i] = time + 0.5;
-        if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
-        continue;
-      }
+      if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
+        vx[i] *= 0.2; vz[i] *= 0.2;
+        if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
+        attackT[i] += dt;
+        if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
+      } else attackT[i] = 0.6; // 도착 0.4초 뒤 첫 공격
       q.setFromAxisAngle(up, yaw[i]);
       s.setScalar(scale[i]);
       p.set(px[i], 0, pz[i]);
@@ -335,39 +341,49 @@ export function createHorde(scene, physics, {
     cHit.needsUpdate = true;
   }
 
-  // 광선 vs 좀비(수직 캡슐 근사: 반지름 0.45, 높이 1.9). 가장 가까운 것 반환.
-  const tmpHit = { index: -1, t: Infinity, x: 0, y: 0, z: 0 };
-  function raycast(ox, oy, oz, dx, dy, dz, maxT) {
-    tmpHit.index = -1; tmpHit.t = maxT;
+  // 광선 vs 좀비(수직 캡슐 근사: 반지름 0.58, 높이 1.95). 가까운 순으로 최대 maxHits 명 — 관통.
+  const HB = { i: new Int32Array(6), t: new Float64Array(6), n: 0 };
+  const hitPool = Array.from({ length: 6 }, () => ({ index: -1, t: 0, x: 0, y: 0, z: 0 }));
+  const hits = [];
+  function raycast(ox, oy, oz, dx, dy, dz, maxT, maxHits = 3) {
+    HB.n = 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) continue;
-      const r = 0.58 * scale[i], h = 1.95 * scale[i]; // 관대한 히트박스 — 폰 조준 손맛
-      // 수평 원기둥 교차(XZ 원 + Y 구간)
+      const r = 0.58 * scale[i], h = 1.95 * scale[i];
       const ex = ox - px[i], ez = oz - pz[i];
       const a = dx * dx + dz * dz, b = 2 * (ex * dx + ez * dz), c = ex * ex + ez * ez - r * r;
       const disc = b * b - 4 * a * c;
       if (disc < 0) continue;
       const t = (-b - Math.sqrt(disc)) / (2 * a);
-      if (t < 0 || t > tmpHit.t) continue;
+      if (t < 0 || t > maxT) continue;
       const y = oy + dy * t;
       if (y < 0 || y > h) continue;
-      tmpHit.index = i; tmpHit.t = t; tmpHit.x = ox + dx * t; tmpHit.y = y; tmpHit.z = oz + dz * t;
+      if (HB.n === maxHits && t >= HB.t[HB.n - 1]) continue;
+      let k = Math.min(HB.n, maxHits - 1);
+      while (k > 0 && HB.t[k - 1] > t) { HB.t[k] = HB.t[k - 1]; HB.i[k] = HB.i[k - 1]; k--; }
+      HB.t[k] = t; HB.i[k] = i; if (HB.n < maxHits) HB.n++;
     }
-    return tmpHit.index >= 0 ? tmpHit : null;
+    if (!HB.n) return null;
+    hits.length = HB.n;
+    for (let k = 0; k < HB.n; k++) {
+      const rec = hitPool[k], t = HB.t[k];
+      rec.index = HB.i[k]; rec.t = t; rec.x = ox + dx * t; rec.y = oy + dy * t; rec.z = oz + dz * t; hits[k] = rec;
+    }
+    return hits;
   }
 
   // 피해. 죽으면 시체 스폰 + 인스턴스 재활용 예약. 반환: 죽었는지.
   function damage(i, amount, dirX, dirZ, time, force = 9) {
     iHit.setX(i, time);
     hp[i] -= amount;
-    if (hp[i] > 0) { const kb = 1.5 / scale[i]; vx[i] -= dirX * kb; vz[i] -= dirZ * kb; return false; }
+    if (hp[i] > 0) { const kb = 5.5 / (scale[i] * scale[i]); vx[i] -= dirX * kb; vz[i] -= dirZ * kb; stagger[i] = Math.max(stagger[i], 0.45 / scale[i]); return false; }
     kill(i, dirX, dirZ, time, force);
     return true;
   }
   function kill(i, dirX, dirZ, time, force = 9) {
     if (!alive[i]) return;
     alive[i] = 0; stats.kills++;
-    respawnAt[i] = time + 1.5 + Math.random() * 2.5;
+    respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force + vx[i] * 0.3, y: 3 + Math.random() * 3, z: dirZ * force + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);

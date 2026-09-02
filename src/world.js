@@ -29,6 +29,12 @@ export const LAYOUT = {
     { style: 'giwa',  x:  20, z: -56, yaw:  0.18 },
     { style: 'choga', x: -21, z: -52, yaw: -0.06 },
     { style: 'giwa',  x: -14, z: -26, yaw:  Math.PI + 0.35 }, // 길 한복판 가까이, 첫 파괴 대상
+    { style: 'choga', x:  24, z: -30, yaw:  0.22 },
+    { style: 'choga', x: -38, z: -62, yaw: -0.4 },               // 뒷줄
+    { style: 'giwa',  x:  42, z: -72, yaw:  0.5 },
+    { style: 'choga', x: -30, z: -124, yaw: 0.1 },
+    { style: 'giwa',  x:  40, z: -108, yaw: -0.3 },
+    { style: 'choga', x:  44, z: -40, yaw: -0.15 },
   ],
   player: { x: 0, y: 3.2, z: 30 },
   spawn: { x: 0, z: -105, halfW: 20 },                    // 궁 정문 앞 광장에서 쏟아진다

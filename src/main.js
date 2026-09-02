@@ -12,7 +12,7 @@ const q = new URLSearchParams(location.search);
 const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 2 : 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));   // 폰: 두 개의 풀해상도 RT + 그림자 패스라 1.5 로 캡
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -41,7 +41,7 @@ const moon = new THREE.DirectionalLight(0xd8e0ff, 5.2);
 moon.position.copy(moonDir).multiplyScalar(220).add(new THREE.Vector3(0, 0, -40));
 moon.target.position.set(0, 0, -40); scene.add(moon.target);
 moon.castShadow = true;
-moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.mapSize.set(isMobile ? 1024 : 2048, isMobile ? 1024 : 2048);
 Object.assign(moon.shadow.camera, { left: -95, right: 95, top: 120, bottom: -90, near: 20, far: 520 });
 moon.shadow.camera.updateProjectionMatrix();
 moon.shadow.bias = -0.00035; moon.shadow.normalBias = 0.06;
@@ -122,7 +122,7 @@ for (const b of world.buildings) {
 const fx = {
   shards: createDebris(scene, { count: 900, color: 0x8d8b86, size: 0.2 }),
   blood: createDebris(scene, { count: 600, layer: LAYER_SPOT, color: 0xc1121f, size: 0.12, gravity: -24, bounce: 0.05, life: 1.6 }),
-  decals: createDecals(scene, { count: 600 }),
+  decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
 };
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
 const playerPos = new THREE.Vector3(LAYOUT.player.x, LAYOUT.player.y, LAYOUT.player.z);
@@ -142,12 +142,12 @@ horde.hooks.onExplode = (x, z, time) => {
   for (const c of physics.corpses) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) { const f = (1 - d / R) * 14; c.body.applyImpulse({ x: dx / (d || 1) * f, y: f * 0.8, z: dz / (d || 1) * f }, true); } }
   for (const c of physics.chunks) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) { const f = (1 - d / R) * 40; c.body.applyImpulse({ x: dx / (d || 1) * f, y: f * 0.9, z: dz / (d || 1) * f }, true); } }
 };
-const nightlife = createNightlife(scene, world.buildings);
+const nightlife = createNightlife(scene, world.buildings, { playerZ: LAYOUT.player.z, maxLights: 2 });
 const audio = createAudio();
 const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { position: playerPos, onCollapse: (b) => nightlife.onBuildingCollapsed(b) });
 gun.attachInput(canvas);
 
-const game = { started: false, over: false, hp: 100, time: 0, dawnAt: 150, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
+const game = { started: false, over: false, hp: 100, time: 0, dawnAt: 120, lastReached: 0, nextLightning: 6, god: q.has('god'), demo: q.has('demo') };
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -198,7 +198,7 @@ renderer.setAnimationLoop((now) => {
     if (phase < 11) {
       // 가장 가까운 좀비 무리의 몸통을 겨눈 채 좌우로 훑는다
       let best = -1, bestD = 1e9;
-      for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const d = Math.hypot(horde.px[i] - playerPos.x, horde.pz[i] - playerPos.z); if (d > 8 && d < bestD) { bestD = d; best = i; } }
+      for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const d = Math.hypot(horde.px[i] - playerPos.x, horde.pz[i] - playerPos.z); if (d > 4 && d < bestD) { bestD = d; best = i; } }
       if (best >= 0) {
         const dx = horde.px[best] - playerPos.x, dz = horde.pz[best] - playerPos.z;
         const ty = Math.atan2(-dx, -dz) + Math.sin(time * 2.1) * 0.06;
@@ -265,4 +265,5 @@ function endGame(win) {
     ? `<div class="big">새벽이 왔다</div><div class="sub">처치 ${horde.stats.kills} · 화면을 눌러 다시 밤으로</div>`
     : `<div class="big">밤을 넘기지 못했다</div><div class="sub">처치 ${horde.stats.kills} · 화면을 눌러 다시</div>`;
   end.style.opacity = 1; end.style.pointerEvents = 'auto';
+  end.addEventListener('pointerdown', () => location.reload(), { once: true });
 }

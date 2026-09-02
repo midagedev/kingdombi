@@ -124,6 +124,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
   function collapse(b, dirX, dirZ, time) {
     b.alive = false;
+    if (b.staticCollider) { physics.world.removeCollider(b.staticCollider, false); b.staticCollider = null; }   // 파편·시체가 집터에 쌓일 수 있게
     const remaining = b.parts.filter((p) => !p.destroyed).sort((a, c) => c.center.y - a.center.y); // 위에서부터 무너진다
     collapseQueue.push({ b, parts: remaining, next: time, dirX, dirZ });
     audio.collapse(b.kind === 'palace' ? 1.6 : 1);
@@ -150,9 +151,10 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     _ray.set(_o, _d);
     const MAX = 260;
 
-    // 1) 좀비
-    const z = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX);
-    let t = z ? z.t : MAX;
+    // 1) 좀비 — 관통: 가까운 순 최대 3명, 대미지 감쇠. 건물·물리에 먼저 막히면 그 앞까지만.
+    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 3);
+    const z = zh ? zh[0] : null;
+    let t = zh ? zh[zh.length - 1].t : MAX;
     // 2) 건물 부위
     const bh = raycastBuildings(_ray, t);
     if (bh) t = bh.t;
@@ -180,9 +182,14 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
       if (bh.b.hp <= 0 && bh.b.alive) collapse(bh.b, _d.x, _d.z, time);
     } else if (z) {
-      const killed = horde.damage(z.index, 2.3, _d.x, _d.z, time, 10);
-      fx.blood.burst(z.x, z.y, z.z, killed ? 14 : 6, { dirX: _d.x * 0.8, dirY: 0.45, dirZ: _d.z * 0.8, spread: 0.9, power: 7, scale: 1, time });
-      fx.decals.add(z.x, z.z, killed ? 1.6 + Math.random() : 0.5 + Math.random() * 0.5, time);
+      let dmg = 2.6;
+      for (const h of zh) {
+        if (h.t > t) break;
+        const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 10);
+        fx.blood.burst(h.x, h.y, h.z, killed ? 14 : 5, { dirX: _d.x * 0.8, dirY: 0.45, dirZ: _d.z * 0.8, spread: 0.9, power: 7, scale: 1, time });
+        fx.decals.add(h.x, h.z, killed ? 1.6 + Math.random() : 0.5 + Math.random() * 0.5, time);
+        dmg *= 0.7;
+      }
       audio.hitFlesh();
     }
     if (state.shots % 2 === 0) spawnTracer(_o.x, _o.y, _o.z, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
@@ -214,6 +221,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     barrelHot.color.setRGB(Math.pow(h, 1.6) * 1.2, Math.pow(h, 3.5) * 0.45, Math.pow(h, 6) * 0.15);
     // 화염
     const firingNow = state.firing && state.spin > 0.55 && state.jammed <= 0;
+    audio.setFiring(firingNow);
     const fl = firingNow ? (0.6 + Math.random() * 0.8) : 0;
     flash.scale.setScalar(fl * 1.8); flash.material.rotation = Math.random() * 6.3;
     flashWorld.scale.setScalar(fl * 1.1); flashWorld.material.rotation = flash.material.rotation;
@@ -243,7 +251,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     el.addEventListener('pointermove', (e) => {
       if (!active) return;
       state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.05, 1.05);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.32, 0.18);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.58, 0.18);
       lastX = e.clientX; lastY = e.clientY;
     });
     const stop = () => { active = false; state.firing = false; };

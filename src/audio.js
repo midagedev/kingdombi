@@ -1,6 +1,6 @@
 // 합성 사운드(외부 에셋 0): 개틀링 스핀업·발사·북 타격·붕괴 굉음·좀비 울음·빗소리.
 export function createAudio() {
-  let ctx = null, master, comp, noiseBuf, spinOsc, spinGain, spinFilter, rainGain, groanGain, groanFilter;
+  let ctx = null, master, comp, noiseBuf, spinOsc, spinGain, spinFilter, rainGain, groanGain, groanFilter, fireBase, fireLfoGain, thumpOsc, thumpGain;
   let shotCount = 0;
   const started = () => !!ctx;
 
@@ -28,6 +28,20 @@ export function createAudio() {
     spinOsc[0].frequency.value = 40; spinOsc[1].frequency.value = 40.7;
     for (const o of spinOsc) { o.connect(spinFilter); o.start(); }
     spinFilter.connect(spinGain).connect(master);
+
+    // 발사음: 노이즈 루프 하나를 42Hz 사각파로 게이트(iOS 에서 초당 수십 노드 생성은 크래클/CPU 스파이크)
+    const fire = ctx.createBufferSource(); fire.buffer = noiseBuf; fire.loop = true; fire.playbackRate.value = 1.3;
+    const ff = ctx.createBiquadFilter(); ff.type = 'bandpass'; ff.frequency.value = 1100; ff.Q.value = 0.6;
+    fireBase = ctx.createGain(); fireBase.gain.value = 0;           // 0(정지) / 0.5(발사 중, LFO 가 ±0.5 로 흔든다)
+    const fireLfo = ctx.createOscillator(); fireLfo.type = 'square'; fireLfo.frequency.value = 42;
+    fireLfoGain = ctx.createGain(); fireLfoGain.gain.value = 0;
+    fireLfo.connect(fireLfoGain).connect(fireBase.gain); fireLfo.start();
+    const fireOut = ctx.createGain(); fireOut.gain.value = 0.28;
+    fire.connect(ff).connect(fireBase).connect(fireOut).connect(master); fire.start();
+    // 저음 펀치: 같은 LFO 로 게이트되는 60Hz 사인
+    thumpOsc = ctx.createOscillator(); thumpOsc.frequency.value = 62;
+    thumpGain = ctx.createGain(); thumpGain.gain.value = 0;
+    thumpOsc.connect(thumpGain).connect(fireBase).connect(master); thumpOsc.start();
 
     // 빗소리: 노이즈 하이패스 루프
     const rain = ctx.createBufferSource(); rain.buffer = noiseBuf; rain.loop = true;
@@ -69,19 +83,25 @@ export function createAudio() {
     o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
 
+  function setFiring(on) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    fireBase.gain.setTargetAtTime(on ? 0.5 : 0, t, 0.02);
+    fireLfoGain.gain.setTargetAtTime(on ? 0.5 : 0, t, 0.02);
+    thumpGain.gain.setTargetAtTime(on ? 0.35 : 0, t, 0.02);
+  }
   function shot() {
     if (!ctx) return;
     shotCount++;
-    noiseBurst({ freq: 900 + Math.random() * 500, q: 0.7, gain: 0.22, dur: 0.05 });
-    tone({ freq: 90, to: 40, gain: 0.18, dur: 0.05 });
     // 북: 여덟 발마다 한 번, 발사 리듬 위에 얹히는 국악 타격
     if (shotCount % 8 === 0) { tone({ freq: 70, to: 32, gain: 0.55, dur: 0.28 }); noiseBurst({ freq: 140, q: 1.5, gain: 0.35, dur: 0.18, type: 'lowpass' }); }
   }
-  function hitFlesh() { if (ctx) noiseBurst({ freq: 400 + Math.random() * 300, q: 1.0, gain: 0.12, dur: 0.07, type: 'lowpass' }); }
-  function hitStone() { if (ctx) noiseBurst({ freq: 2500 + Math.random() * 2000, q: 2.5, gain: 0.08, dur: 0.04 }); }
+  let lastFlesh = 0, lastStone = 0;
+  function hitFlesh() { if (ctx && ctx.currentTime - lastFlesh > 0.07) { lastFlesh = ctx.currentTime; noiseBurst({ freq: 400 + Math.random() * 300, q: 1.0, gain: 0.12, dur: 0.07, type: 'lowpass' }); } }
+  function hitStone() { if (ctx && ctx.currentTime - lastStone > 0.07) { lastStone = ctx.currentTime; noiseBurst({ freq: 2500 + Math.random() * 2000, q: 2.5, gain: 0.08, dur: 0.04 }); } }
   function collapse(big = 1) { if (!ctx) return; noiseBurst({ freq: 120, q: 0.8, gain: 0.5 * big, dur: 0.9 * big, type: 'lowpass', rate: 0.6 }); tone({ freq: 50, to: 25, gain: 0.5 * big, dur: 0.7 }); }
   function thunder() { if (!ctx) return; noiseBurst({ freq: 200, q: 0.5, gain: 0.35, dur: 1.6, type: 'lowpass', rate: 0.5 }); }
   function overheat() { if (!ctx) return; noiseBurst({ freq: 3000, q: 1.2, gain: 0.25, dur: 1.4, type: 'highpass' }); }
 
-  return { start, started, setSpin, setGroan, shot, hitFlesh, hitStone, collapse, thunder, overheat };
+  return { start, started, setSpin, setGroan, setFiring, shot, hitFlesh, hitStone, collapse, thunder, overheat };
 }

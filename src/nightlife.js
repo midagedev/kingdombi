@@ -6,7 +6,9 @@ import { LAYER_SPOT } from './look.js';
 const WARM = new THREE.Color(0xffb35c);
 const LANTERN = new THREE.Color(0xffb347);
 
-export function createNightlife(scene, buildings) {
+export function createNightlife(scene, buildings, { playerZ = 30, maxLights = 2 } = {}) {
+  // 포워드 렌더러라 포인트라이트 수가 곧 프래그먼트 비용. 플레이어에 가까운 집 몇 채만 실제 광원을 갖는다.
+  const litHouses = new Set(buildings.filter((b) => b.kind === 'giwa' || b.kind === 'choga').sort((a, b) => Math.abs(a.bounds.max.z - playerZ) - Math.abs(b.bounds.max.z - playerZ)).slice(0, maxLights));
   const windows = [];   // { spotMat, worldMat, base, dim, phase }
   const lanterns = [];  // { mat, light, phase }
 
@@ -38,7 +40,7 @@ export function createNightlife(scene, buildings) {
       const t = n === 1 ? 0.5 : (k + 0.5) / n;
       const x = THREE.MathUtils.lerp(min.x + 1.2, max.x - 1.2, t);
       const z = max.z - (b.kind === 'palace' ? 3.5 : 0.9);
-      addLantern(x, eaveY, z, b.kind === 'giwa' || b.kind === 'choga');
+      addLantern(x, eaveY, z, litHouses.has(b) && k === 0);
     }
   }
 
