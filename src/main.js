@@ -84,27 +84,26 @@ const look = createLook(renderer, scene, camera);
 const hud = document.getElementById('hud');
 hud.innerHTML = `
   <div id="fps"></div>
-  <div id="kills"></div>
-  <div id="heat"><div id="heatFill"></div></div>
-  <div id="hp"><div id="hpFill"></div></div>
-  <div id="title"><div class="t1">킹덤비</div><div class="t2">KINGDOMBI</div><div class="t3">밤이 온다. 화면을 눌러 방아쇠를 당겨라.<br>드래그 = 조준 · 누르고 있기 = 발사</div></div>
+  <div id="kills"><span id="killN">0</span><span class="lbl">처치</span></div>
+  <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div id="heat"><i id="heatFill"></i></div></div>
+  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="t3">밤이 온다.<br>누르면 방아쇠, 드래그로 조준.</div></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
 style.textContent = `
-  #kills { position:absolute; top: max(env(safe-area-inset-top), 12px); right: 14px; font: 900 22px/1 ui-sans-serif, system-ui, "Apple SD Gothic Neo", sans-serif; color:#eee; letter-spacing:.06em; text-shadow: 0 0 12px #000; }
-  #kills small { display:block; font-size:10px; opacity:.6; letter-spacing:.3em; }
-  #heat { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 16px); transform:translateX(-50%); width:44%; height:6px; background:#111; border:1px solid #333; }
-  #heatFill { height:100%; width:0; background:linear-gradient(90deg,#666,#c1121f 70%,#ff8a3d); }
-  #hp { position:absolute; left:50%; bottom: calc(max(env(safe-area-inset-bottom), 16px) + 12px); transform:translateX(-50%); width:44%; height:3px; background:#111; }
-  #hpFill { height:100%; width:100%; background:#ddd; }
-  #title, #end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background:rgba(0,0,0,.55); transition: opacity .6s; }
-  #title .t1 { font: 900 96px/1 "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; color:#f2f2f2; letter-spacing:-.04em; text-shadow: 0 0 40px rgba(193,18,31,.8), 0 0 4px #000; }
-  #title .t1::first-letter { color:#c1121f; }
-  #title .t2 { font: 700 13px/1 ui-monospace, monospace; color:#b04cff; letter-spacing:.7em; margin: 14px 0 34px; }
-  #title .t3 { font: 500 13px/1.8 system-ui, sans-serif; color:#bbb; }
+  #kills { position:absolute; top: max(env(safe-area-inset-top), 14px); right: 16px; text-align:right; }
+  #kills #killN { display:block; font: 300 34px/1 var(--mono); letter-spacing:-.02em; font-variant-numeric: tabular-nums; }
+  #kills .lbl { display:block; margin-top:4px; font: 300 10px/1 var(--serif); letter-spacing:.5em; opacity:.55; }
+  #gauges { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 18px); transform:translateX(-50%); width: 38%; display:flex; flex-direction:column; gap:7px; }
+  #hp, #heat { height:1px; background: rgba(233,230,223,.18); position:relative; }
+  #hp i, #heat i { position:absolute; left:0; top:-0.5px; height:2px; background: var(--ink); width:100%; transition: width .12s linear, background .3s; }
+  #heat i { width:0; }
+  #heat i.hot { background: var(--red); }
+  #title, #end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
+  #title .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
+  #title .t1 { font: 200 84px/1 var(--serif); letter-spacing:.02em; color: var(--ink); }
+  #title .rule { width: 28px; height:1px; background: var(--red); margin: 26px 0 24px; }
+  #title .t3 { font: 300 13px/1.9 var(--serif); opacity:.7; letter-spacing:.06em; }
   #end { opacity:0; pointer-events:none; }
-  #end .big { font: 900 44px/1.2 "Apple SD Gothic Neo", system-ui, sans-serif; color:#f2f2f2; }
-  #end .sub { font: 500 14px/1.8 system-ui, sans-serif; color:#bbb; margin-top:14px; }
   .hidden { opacity:0 !important; pointer-events:none; }
 `;
 document.head.appendChild(style);
@@ -171,7 +170,7 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 canvas.addEventListener('pointerdown', () => {
-  if (!game.started) { game.started = true; audio.start(); $('title').classList.add('hidden'); }
+  if (!game.started) { game.started = true; audio.start(); $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); }
   else if (game.over) location.reload();
   else audio.start();
 }, { passive: true });
@@ -191,7 +190,7 @@ function updateCamera(dt) {
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
 }
 
-const fpsEl = $('fps'), killsEl = $('kills'), heatFill = $('heatFill'), hpFill = $('hpFill');
+const fpsEl = $('fps'), killsEl = $('killN'), heatFill = $('heatFill'), hpFill = $('hpFill');
 let frames = 0, acc = 0, last = performance.now();
 window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, fps: 0 };
 
@@ -279,9 +278,9 @@ renderer.setAnimationLoop((now) => {
     if (q.has('stats')) fpsEl.textContent = `${(frames / acc).toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tri · z${horde.stats.alive}`;
     frames = 0; acc = 0;
   }
-  killsEl.innerHTML = `${horde.stats.kills}<small>처치</small>`;
+  killsEl.textContent = horde.stats.kills;
   heatFill.style.width = `${(gun.state.heat * 100).toFixed(0)}%`;
-  heatFill.style.filter = gun.state.jammed > 0 ? 'brightness(2)' : '';
+  heatFill.classList.toggle('hot', gun.state.heat > 0.7 || gun.state.jammed > 0);
   hpFill.style.width = `${Math.max(0, game.hp)}%`;
 });
 

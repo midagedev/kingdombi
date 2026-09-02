@@ -7,11 +7,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23000%27/%3E%3Ccircle cx=%2711%27 cy=%2714%27 r=%273%27 fill=%27%23b04cff%27/%3E%3Ccircle cx=%2721%27 cy=%2714%27 r=%273%27 fill=%27%23b04cff%27/%3E%3Crect x=%278%27 y=%2722%27 width=%2716%27 height=%273%27 fill=%27%23c1121f%27/%3E%3C/svg%3E">
 <meta name="theme-color" content="#000000">
 <title>KINGDOMBI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;600&family=IBM+Plex+Mono:wght@300;500&display=swap" rel="stylesheet">
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
   canvas { display: block; width: 100vw; height: 100dvh; }
-  #hud { position: fixed; inset: 0; pointer-events: none; font-family: ui-monospace, monospace; color: #eee; }
-  #fps { position: absolute; top: env(safe-area-inset-top, 8px); left: 8px; font-size: 12px; opacity: .6; }
+  :root { --serif: "Noto Serif KR", "Apple Myungjo", "Nanum Myeongjo", serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace; --ink: #e9e6df; --red: #c1121f; --violet: #b04cff; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: var(--ink); font-family: var(--mono); }
+  #fps { position: absolute; top: max(env(safe-area-inset-top), 10px); left: 12px; font: 300 10px/1 var(--mono); opacity: .4; letter-spacing: .08em; }
 </style>
 </head>
 <body>
