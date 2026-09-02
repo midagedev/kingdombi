@@ -121,8 +121,8 @@ for (const b of world.buildings) {
   b.staticCollider = physics.world.createCollider(physics.RAPIER.ColliderDesc.cuboid(s.x / 2, s.y / 2, s.z / 2).setTranslation(c.x, c.y, c.z).setCollisionGroups(0x0002FFFF)); // 그룹 2: 총알 레이가 무시
 }
 const fx = {
-  shards: createDebris(scene, { count: 900, color: 0x8d8b86, size: 0.2 }),
-  blood: createDebris(scene, { count: 600, layer: LAYER_SPOT, color: 0xc1121f, size: 0.12, gravity: -24, bounce: 0.05, life: 1.6 }),
+  shards: createDebris(scene, { count: 700, color: 0x8d8b86, size: 0.13, gravity: -30, life: 2.6 }),
+  blood: createDebris(scene, { count: 500, layer: LAYER_SPOT, color: 0xc1121f, size: 0.1, gravity: -32, bounce: 0.02, life: 1.1 }),
   decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
 };
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
@@ -142,7 +142,7 @@ horde.hooks.onExplode = (x, z, time) => {
   // 시체·파편 날리기
   // 충격량은 질량 비례(속도 변화 상한 9 m/s) — 가벼운 파편이 하늘로 사라지지 않게
   const shove = (body, dx, dz, d, dv) => { const m = body.mass() || 1; const f = Math.min(9, dv * (1 - d / R)) * m; body.applyImpulse({ x: dx / (d || 1) * f, y: f * 0.8, z: dz / (d || 1) * f }, true); };
-  for (const c of physics.corpses) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) shove(c.body, dx, dz, d, 12); }
+  for (const c of physics.corpses) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) shove(c.body, dx, dz, d, 6); }
   for (const c of physics.chunks) { if (!c.alive) continue; const t = c.body.translation(); const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz); if (d < R) shove(c.body, dx, dz, d, 7); }
 };
 const nightlife = createNightlife(scene, world.buildings, { playerZ: LAYOUT.player.z, maxLights: 2 });
@@ -171,12 +171,12 @@ canvas.addEventListener('pointerdown', () => {
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new THREE.Vector3();
 function updateCamera(dt) {
   const yaw = gun.state.yaw * 0.6;
-  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.7, 3.4, Math.cos(yaw) * 4.9 + Math.sin(yaw) * 1.7).add(playerPos);
+  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.6, 7.2, Math.cos(yaw) * 6.8 + Math.sin(yaw) * 1.6).add(playerPos);
   // 살짝 옆에서 (오른쪽 어깨) — 총열과 골목이 동시에 보인다
   const r = gun.state.recoil;
   camPos.x += (Math.random() - 0.5) * r * 0.12; camPos.y += (Math.random() - 0.5) * r * 0.1;
   camera.position.lerp(camPos, Math.min(1, dt * 9));
-  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.9 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(44).add(playerPos).add(new THREE.Vector3(0, -1.2, 0));
+  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(34).add(playerPos).add(new THREE.Vector3(0, -3.2, 0));
   camTarget.lerp(tmpV, Math.min(1, dt * 12));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;

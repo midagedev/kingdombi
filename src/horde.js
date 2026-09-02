@@ -384,7 +384,7 @@ export function createHorde(scene, physics, {
     if (!alive[i]) return;
     alive[i] = 0; stats.kills++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
-    const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force + vx[i] * 0.3, y: 3 + Math.random() * 3, z: dirZ * force + vz[i] * 0.3 }, yaw[i], time, scale[i]);
+    const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: 0.8 + Math.random() * 1.2, z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);

@@ -114,12 +114,12 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     p.destroyed = true; b.hide(p.id);
     const c = p.center;
     if (p.volume > MIN_PART_VOLUME && !p.mesh.isInstancedMesh) {
-      const mass = Math.max(0.5, p.volume * 0.8);
+      const mass = Math.max(1, p.volume * 600);
       physics.spawnChunk(p.mesh, { x: dirX * power * mass, y: power * 0.35 * mass, z: dirZ * power * mass }, time);
     } else {
       // 기와 인스턴스 묶음·작은 부재 → 파편 소나기
-      const n = p.mesh.isInstancedMesh ? Math.min(160, 20 + p.mesh.count * 0.5) : 8;
-      fx.shards.burst(c.x, c.y, c.z, n, { dirX: dirX * 0.4, dirY: 0.7, dirZ: dirZ * 0.4, spread: 1.6, power: 6 + power * 0.6, scale: 1.2, time });
+      const n = p.mesh.isInstancedMesh ? Math.min(90, 12 + p.mesh.count * 0.3) : 6;
+      fx.shards.burst(c.x, c.y, c.z, n, { dirX: dirX * 0.4, dirY: 0.45, dirZ: dirZ * 0.4, spread: 1.2, power: 3 + power * 0.3, scale: 1.2, time });
     }
   }
   function collapse(b, dirX, dirZ, time) {
@@ -167,17 +167,18 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       const body = ph.collider.parent();
       const hx = _o.x + _d.x * t, hy = _o.y + _d.y * t, hz = _o.z + _d.z * t;
       if (body && body.isDynamic()) {
-        body.applyImpulseAtPoint({ x: _d.x * 6, y: 2.5, z: _d.z * 6 }, { x: hx, y: hy, z: hz }, true);
+        const m = body.mass() || 1, dv = Math.min(2.2, 60 / m);   // 시체·파편: 총알 한 발 = 속도 변화 ≤2.2 m/s
+        body.applyImpulseAtPoint({ x: _d.x * dv * m, y: 0.5 * dv * m, z: _d.z * dv * m }, { x: hx, y: hy, z: hz }, true);
         fx.blood.burst(hx, hy, hz, 3, { dirX: _d.x * 0.5, dirY: 0.5, dirZ: _d.z * 0.5, spread: 0.8, power: 5, scale: 0.8, time });
       } else {
-        fx.shards.burst(hx, hy, hz, 2, { dirX: -_d.x * 0.3, dirY: 0.9, dirZ: -_d.z * 0.3, spread: 0.7, power: 4, scale: 0.6, time });
+        fx.shards.burst(hx, hy, hz, 2, { dirX: -_d.x * 0.3, dirY: 0.6, dirZ: -_d.z * 0.3, spread: 0.5, power: 2.5, scale: 0.6, time });
         if (state.shots % 3 === 0) audio.hitStone();
       }
     } else if (bh) {
       const p = bh.part; const hx = _o.x + _d.x * t, hy = _o.y + _d.y * t, hz = _o.z + _d.z * t;
       const dmg = 5.5;
       p.hp -= dmg; bh.b.hp -= dmg;
-      fx.shards.burst(hx, hy, hz, 4, { dirX: -_d.x * 0.6, dirY: 0.7, dirZ: -_d.z * 0.6, spread: 1.1, power: 6, scale: 0.9, time });
+      fx.shards.burst(hx, hy, hz, 3, { dirX: -_d.x * 0.6, dirY: 0.5, dirZ: -_d.z * 0.6, spread: 0.8, power: 3.5, scale: 0.9, time });
       if (state.shots % 2 === 0) audio.hitStone();
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
       if (bh.b.hp <= 0 && bh.b.alive) collapse(bh.b, _d.x, _d.z, time);
@@ -186,7 +187,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       for (const h of zh) {
         if (h.t > t) break;
         const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 10);
-        fx.blood.burst(h.x, h.y, h.z, killed ? 14 : 5, { dirX: _d.x * 0.8, dirY: 0.45, dirZ: _d.z * 0.8, spread: 0.9, power: 7, scale: 1, time });
+        fx.blood.burst(h.x, h.y, h.z, killed ? 10 : 4, { dirX: _d.x * 0.8, dirY: 0.25, dirZ: _d.z * 0.8, spread: 0.7, power: 5, scale: 1, time });
         fx.decals.add(h.x, h.z, killed ? 1.6 + Math.random() : 0.5 + Math.random() * 0.5, time);
         dmg *= 0.7;
       }

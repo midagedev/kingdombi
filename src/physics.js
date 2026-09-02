@@ -17,9 +17,9 @@ export async function createPhysics(scene) {
   // ── 시체 풀 ──
   const corpses = [];
   for (let i = 0; i < CORPSE_POOL; i++) {
-    const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, -50 - i * 3, 0).setLinearDamping(0.35).setAngularDamping(0.9).setCanSleep(true));
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, -50 - i * 3, 0).setLinearDamping(0.9).setAngularDamping(1.6).setCanSleep(true));
     // 누운 사람 크기: 길이 1.7(z 축), 폭 0.5, 두께 0.35
-    const col = world.createCollider(RAPIER.ColliderDesc.cuboid(0.25, 0.18, 0.85).setDensity(0.6).setFriction(1.2).setRestitution(0.05), body);
+    const col = world.createCollider(RAPIER.ColliderDesc.cuboid(0.25, 0.18, 0.85).setDensity(230).setFriction(1.2).setRestitution(0.05), body); // 밀도 230 ≈ 70 kg
     body.setEnabled(false);
     corpses.push({ body, col, alive: false, born: 0, slot: i });
   }
@@ -36,7 +36,7 @@ export async function createPhysics(scene) {
     c.body.setTranslation({ x: pos.x, y: pos.y + 0.9 * scale, z: pos.z }, true);
     c.body.setRotation({ x: yawQ.x, y: yawQ.y, z: yawQ.z, w: yawQ.w }, true);
     c.body.setLinvel({ x: vel.x, y: vel.y, z: vel.z }, true);
-    c.body.setAngvel({ x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 12 }, true);
+    c.body.setAngvel({ x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 3, z: (Math.random() - 0.5) * 6 }, true);
     c.body.wakeUp();
     return c;
   }
@@ -62,7 +62,7 @@ export async function createPhysics(scene) {
       .setTranslation(_p.x, _p.y, _p.z).setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
       .setLinearDamping(0.15).setAngularDamping(0.4).setCanSleep(true));
     world.createCollider(RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z).setTranslation(center.x, center.y, center.z)
-      .setDensity(0.8).setFriction(0.9).setRestitution(0.15), body);
+      .setDensity(600).setFriction(0.9).setRestitution(0.15), body);
     const worldCenter = center.clone().applyQuaternion(_q).add(_p);
     // 큰 판(지붕면)은 속도 상한 — 종이처럼 날지 않고 무겁게 주저앉는다
     const mass = body.mass() || 1; const maxDv = Math.max(1.2, 9 - Math.max(half.x, half.y, half.z) * 1.6);
