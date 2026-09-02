@@ -58,7 +58,8 @@
 
 ## 스택
 
-three.js 0.185.1(cheoma 고정) · Vite · Rapier(WASM) · WebAudio 합성. 외부 에셋 0 — 모델은 절차생성, 소리는 합성.
+three.js 0.185.1(cheoma 고정) · Vite · Rapier(WASM) · WebAudio 합성 효과음. 모델은 절차생성.
+BGM 은 kingbi(초기 버전)에서 이전한 자작 Suno 트랙 4곡(`public/bgm/`): wave(전투) · bloodnight(체력 28% 미만) · lull(새벽) · death-sting(사망, 1회). 0.7s 크로스페이드, 재생 중 좀비 드론 더킹.
 cheoma 의 MP3 BGM 은 제3자 게임 라이선스가 없다. 쓰지 않는다.
 
 ## 마일스톤

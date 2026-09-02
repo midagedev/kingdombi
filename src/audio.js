@@ -66,7 +66,7 @@ export function createAudio() {
     spinFilter.frequency.setTargetAtTime(300 + level * 1400, ctx.currentTime, 0.05);
     spinGain.gain.setTargetAtTime(level * 0.12, ctx.currentTime, 0.04);
   }
-  function setGroan(level) { if (ctx) groanGain.gain.setTargetAtTime(Math.min(0.35, level), ctx.currentTime, 0.3); }
+  function setGroan(level) { if (ctx) groanGain.gain.setTargetAtTime(Math.min(0.35, level) * (bgmCurrent && bgmCurrent !== 'death' ? 0.3 : 1), ctx.currentTime, 0.3); }
 
   function noiseBurst({ freq = 1200, q = 0.8, gain = 0.3, dur = 0.06, type = 'bandpass', rate = 1 }) {
     const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.playbackRate.value = rate; src.loop = true;
@@ -103,5 +103,31 @@ export function createAudio() {
   function thunder() { if (!ctx) return; noiseBurst({ freq: 200, q: 0.5, gain: 0.35, dur: 1.6, type: 'lowpass', rate: 0.5 }); }
   function overheat() { if (!ctx) return; noiseBurst({ freq: 3000, q: 1.2, gain: 0.25, dur: 1.4, type: 'highpass' }); }
 
-  return { start, started, setSpin, setGroan, setFiring, shot, hitFlesh, hitStone, collapse, thunder, overheat };
+  // ── BGM: Suno 스코어(자작, kingbi 에서 이전). 상태 머신 + 0.7s 크로스페이드. 스코어 재생 중 좀비 드론은 더킹.
+  const BGM = { wave: 'wave.mp3', bloodnight: 'bloodnight.mp3', lull: 'lull.mp3', death: 'death-sting.mp3' };
+  const bgm = new Map(); let bgmCurrent = null, bgmLevel = 0.42;
+  function bgmEnsure() {
+    if (!ctx || bgm.size) return;
+    const base = new URL('bgm/', document.baseURI).href;
+    for (const [name, file] of Object.entries(BGM)) {
+      const el = new Audio(base + file); el.loop = name !== 'death'; el.preload = 'auto'; el.crossOrigin = 'anonymous';
+      const gain = ctx.createGain(); gain.gain.value = 0;
+      const src = ctx.createMediaElementSource(el); src.connect(gain).connect(master);
+      bgm.set(name, { el, gain });
+    }
+  }
+  function setBgm(name) {
+    if (!ctx) return; bgmEnsure();
+    if (bgmCurrent === name) return;
+    const t = ctx.currentTime;
+    const prev = bgm.get(bgmCurrent);
+    if (prev) { prev.gain.gain.setTargetAtTime(0, t, 0.5); const el = prev.el; setTimeout(() => { if (bgmCurrent !== name) return; el.pause(); el.currentTime = 0; }, 1800); }
+    bgmCurrent = name;
+    const next = bgm.get(name);
+    if (next) { next.el.currentTime = 0; next.el.play().catch(() => {}); next.gain.gain.setTargetAtTime(bgmLevel, t, 0.7); }
+    if (groanGain) groanGain.gain.setTargetAtTime(name && name !== 'death' ? 0.06 : 0.2, t, 0.5);
+  }
+
+  const bgmState = () => ({ current: bgmCurrent, tracks: [...bgm].map(([n, t]) => ({ n, paused: t.el.paused, ready: t.el.readyState, err: t.el.error?.code ?? null, t: +t.el.currentTime.toFixed(1), gain: +t.gain.gain.value.toFixed(2) })), ctx: ctx?.state });
+  return { start, started, setSpin, setGroan, setFiring, setBgm, bgmState, shot, hitFlesh, hitStone, collapse, thunder, overheat };
 }

@@ -171,7 +171,7 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 canvas.addEventListener('pointerdown', () => {
-  if (!game.started) { game.started = true; audio.start(); $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); }
+  if (!game.started) { game.started = true; audio.start(); audio.setBgm('wave'); $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); }
   else if (game.over) location.reload();
   else audio.start();
 }, { passive: true });
@@ -193,7 +193,7 @@ function updateCamera(dt) {
 
 const fpsEl = $('fps'), killsEl = $('killN'), heatFill = $('heatFill'), hpFill = $('hpFill');
 let frames = 0, acc = 0, last = performance.now();
-window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, fps: 0 };
+window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, audio, fps: 0 };
 
 let captureRequest = null;   // 사망 프레임 캡처 콜백(렌더 직후 1회)
 renderer.setAnimationLoop((now) => {
@@ -258,15 +258,15 @@ renderer.setAnimationLoop((now) => {
 
   // 붉은 밤: 체력 28% 미만이면 세계가 붉게 물든다
   const wantBlood = started && game.hp < 28;
-  if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner('포대가 무너진다 — 붉은 밤'); juice.stamp('危'); audio.thunder(); }
-  if (!wantBlood) game.bloodNight = false;
+  if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner('포대가 무너진다 — 붉은 밤'); juice.stamp('危'); audio.thunder(); audio.setBgm('bloodnight'); }
+  if (!wantBlood && game.bloodNight) { game.bloodNight = false; if (!game.over) audio.setBgm('wave'); }
   look.state.blood += ((game.bloodNight ? 1 : 0) - look.state.blood) * Math.min(1, rawDt * 2.5);
   fires.update(dt); juice.update(time);
 
   // 새벽
-  if (started && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); }
+  if (started && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }
   if (started && time > game.dawnAt + 12) endGame(true);
-  if (started && game.hp <= 0 && !game.dying) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; }
+  if (started && game.hp <= 0 && !game.dying) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; audio.setBgm('death'); }
   if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = -1; endGame(false); } }
 
   renderer.info.reset();
