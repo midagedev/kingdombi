@@ -1,0 +1,19 @@
+{
+  "name": "kingdombi",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 4400",
+    "build": "vite build",
+    "preview": "vite preview --port 4401"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "cheoma": "file:../cheoma",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  }
+}
