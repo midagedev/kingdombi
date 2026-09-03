@@ -1,6 +1,7 @@
 // 느와르 룩 파이프라인. 세계(layer 0)는 잉크 흑백으로, 스팟컬러 오브젝트(layer 1)만 색을 가진다.
 // 두 패스가 하나의 depth texture 를 공유해 스팟컬러도 세계에 정확히 가려진다.
 import * as THREE from 'three';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
 export const LAYER_WORLD = 0;
 export const LAYER_SPOT = 1;   // 피·좀비 발광·등롱·총구 화염·과열 총열
@@ -123,6 +124,11 @@ export function createLook(renderer, scene, camera) {
       near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) },   // ?edge=0..1 윤곽선 세기
     },
   });
+  // AA(2026-09-03): 세계·스팟 두 패스가 depth 를 공유하는 구조라 MSAA 를 못 쓴다(멀티샘플 RT 는 저마다 depth 버퍼를 갖는다) → 합성 결과에 FXAA 한 번. ?aa=0 으로 끈다
+  const useAA = new URLSearchParams(location.search).get('aa') !== '0';
+  const rtOut = useAA ? new THREE.WebGLRenderTarget(size.x, size.y, { depthBuffer: false }) : null;
+  const fxaaMat = useAA ? new THREE.ShaderMaterial({ ...FXAAShader, uniforms: THREE.UniformsUtils.clone(FXAAShader.uniforms), depthTest: false, depthWrite: false }) : null;
+  if (fxaaMat) { fxaaMat.uniforms.tDiffuse.value = rtOut.texture; fxaaMat.uniforms.resolution.value.set(1 / size.x, 1 / size.y); }
   const quad = new THREE.Mesh(quadGeo, compMat);
   quad.frustumCulled = false;
   quadScene.add(quad);
@@ -140,6 +146,7 @@ export function createLook(renderer, scene, camera) {
     rtWorld.setSize(w, h); rtSpot.setSize(w, h);
     rtGlowA.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2)); rtGlowB.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2));
     compMat.uniforms.texel.value.set(1 / w, 1 / h);
+    if (rtOut) { rtOut.setSize(w, h); fxaaMat.uniforms.resolution.value.set(1 / w, 1 / h); }
   }
 
   function render(time) {
@@ -172,7 +179,7 @@ export function createLook(renderer, scene, camera) {
     compMat.uniforms.darkness.value = state.darkness;
     compMat.uniforms.blood.value = state.blood; compMat.uniforms.hurt.value = state.hurt; compMat.uniforms.invert.value = state.invert; compMat.uniforms.tint.value = state.tint;
     compMat.uniforms.near.value = camera.near; compMat.uniforms.far.value = camera.far;
-    blit(compMat, null);
+    if (rtOut) { blit(compMat, rtOut); blit(fxaaMat, null); } else blit(compMat, null);
   }
 
   return { render, setSize, state };
