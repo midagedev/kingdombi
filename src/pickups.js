@@ -1,6 +1,7 @@
 // 수리 도구 상자: 호박색으로 빛나는 나무 상자. 달릴 땐 차선 위에 있어 들이받으면 먹고, 정차 땐 앞쪽에 떨어져 있어 쏘면 열린다(도구가 마차로 날아온다).
 // 장갑이 유일한 자원이다 — 열 관리는 없다(2026-09-03). gun.targets 에 등록되어 총알이 맞는다.
 import * as THREE from 'three';
+import { S } from './i18n.js';
 import { LAYER_SPOT } from './look.js';
 
 const WOOD = new THREE.MeshStandardMaterial({ color: 0x2a1c0e, roughness: 0.9 });
@@ -28,7 +29,7 @@ export function createPickups(scene, { vehicle, fx, audio, juice, onHeal, onScor
     fx.blood.burst(p.x, 0.8, p.z, 0, { time });
     c.group.removeFromParent();
     onHeal(heal); onScore(300, '修');
-    juice.stamp('修'); juice.banner(`수리 +${heal}`, 1400); audio.coin();
+    juice.stamp('修'); juice.banner(S.repair(heal), 1400); audio.coin();
   }
   // gun.targets 계약
   function raycast(ray, maxT) {

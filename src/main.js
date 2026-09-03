@@ -12,6 +12,7 @@ import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
 import { createFires } from './fire.js';
 import { createJuice } from './juice.js';
+import { LANG, S, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
 // 데일리 시드: 로컬 날짜(YYYY-MM-DD)를 해시해 길·소품·수리 상자 배치를 정한다. 순위표도 같은 날짜 키를 쓴다.
@@ -98,13 +99,14 @@ const look = createLook(renderer, scene, camera);
 const hud = document.getElementById('hud');
 hud.innerHTML = `
   <div id="fps"></div>
-  <div id="score"><span id="scoreN">0000000</span><span class="lbl"><i id="killN">0</i> 처치</span></div>
+  <div id="score"><span id="scoreN">0000000</span><span class="lbl"><i id="killN">0</i> ${S.kills}</span></div>
   <div id="wave"><span id="waveN"></span><span class="lbl" id="waveL"></span></div>
-  <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div class="lbl"><span id="hpN">100</span> 장갑</div></div>
+  <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div class="lbl"><span id="hpN">100</span> ${S.armor}</div></div>
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
   <div id="stick"><i></i></div>
-  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">오늘의 길 ${DAY} · 궁궐까지 ${ROUTE.start - ROUTE.end} m · 恐龍이 기다린다<br>${isMobile ? '누른 자리가 조이스틱 — 기울여 조준, 누른 동안 발사' : '드래그로 조준, 누른 동안 발사 · 우클릭·Space 로 雷'}<br>雷 는 비격진천뢰 — 조준 링 자리에 떨어진다<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라</div></div>
-  <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">누르면 코인 한 개</div></div>
+  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">${S.titleLines(DAY, ROUTE.start - ROUTE.end, isMobile)}</div></div>
+  <div id="lang"><span data-l="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</span><span data-l="en" class="${LANG === 'en' ? 'on' : ''}">EN</span></div>
+  <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">${S.contHint}</div></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
 style.textContent = `
@@ -127,6 +129,8 @@ style.textContent = `
   #stick { position:absolute; left:76px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 18px); width:108px; height:108px; margin:-54px 0 0 -54px; border:1px solid rgba(233,230,223,.45); border-radius:50%; opacity:0; pointer-events:none; }
   #stick.hint { opacity:.22; transition: opacity .4s; } #stick.on { opacity:.8; }
   #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+  #lang { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; font: 300 11px/1 var(--mono); letter-spacing:.2em; pointer-events:auto; display:flex; gap:14px; opacity:.55; }
+  #lang span { cursor:pointer; padding: 6px 0; } #lang span.on { color:#e6c87a; border-bottom:1px solid #e6c87a; }
   #title, #end, #cont { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
   #end { background: rgba(0,0,0,.76); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   #title .mark, #cont .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
@@ -142,6 +146,9 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 const $ = (id) => document.getElementById(id);
+// 로케일: <html lang> 과 문서 제목·설명(영문일 때 덮어쓴다 — 정적 HTML 은 한국어)
+document.documentElement.lang = LANG; document.title = S.docTitle; document.querySelector('meta[name=description]')?.setAttribute('content', S.docDesc);
+$('lang').addEventListener('pointerdown', (e) => { e.stopPropagation(); const l = e.target.dataset.l; if (l && l !== LANG) setLang(l); });
 
 // ── 부팅 ──
 const t0 = performance.now();
@@ -235,13 +242,13 @@ const bosses = createBosses(scene, physics, {
   onScore: (n, glyph) => addScore(n, glyph),
   onDamage: (n) => damageArmor(n),
   onDeath: (b, time) => {
-    addScore(b.score, b.name.slice(-2), true);
+    addScore(b.score, b.glyph, true);
     if (director.phase !== 'boss') return;
     if (director.stopIdx === ROUTE.stops.length - 1) {
       // 恐龍이 궁궐 정문 위로 무너진다 — 궁궐이 함께 무너지고 새벽이 온다
       const palace = world.buildings.find((x) => x.kind === 'palace');
       setTimeout(() => { if (palace) gun.razeBuilding(palace, 0, -1, game.time); }, 900);
-      director.phase = 'dawn'; game.dawnAt = time + 3; juice.banner('새벽이 온다', 4000);
+      director.phase = 'dawn'; game.dawnAt = time + 3; juice.banner(S.dawnComing, 4000);
     } else { director.phase = 'clear'; director.stateT = 0; }
   },
 });
@@ -281,7 +288,7 @@ addEventListener('resize', resize); resize();
 function insertCoin() {
   game.started = true; game.credits = 1;
   audio.start(); audio.coin(); setTimeout(() => audio.setBgm('wave'), 700);
-  $('title').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
+  $('title').classList.add('hidden'); $('lang').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
   if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z + 0.5; director.stopKills0 = horde.stats.kills - ROUTE.stops[i].quota; director.district = districtAt(vpos.z); cullBuildings(); }
@@ -342,12 +349,12 @@ function updateDirector(dt, time) {
     vehicle.state.targetSpeed = stop0 && vpos.z <= stop0.z + (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) + 0.5 ? 0 : 7.5;
     if (stop0 && vehicle.state.speed < 0.05 && vpos.z > stop0.z && vpos.z <= stop0.z + 6) vpos.z = stop0.z;   // 미세 오차는 그냥 맞춘다
     const d = districtAt(vpos.z);
-    if (d !== director.district) { director.district = d; if (time > 3) juice.banner(d.name, 2600); }
+    if (d !== director.district) { director.district = d; if (time > 3) juice.banner(S.place(d.name), 2600); }
     if (stop && vpos.z <= stop.z) {
       director.phase = 'stop'; if (!q.get('boss')) director.stopKills0 = horde.stats.kills; director.stopT0 = time;
       Object.assign(horde.mix, stop.mix); gun.state.bombs = gun.state.bombsMax;
       pickups.spawn(vpos.x + (Math.random() - 0.5) * 14, vpos.z - 15 - Math.random() * 8, 'stop');
-      juice.banner(`STAGE ${director.stopIdx + 1} · ${stop.name} · ${stop.sub}`, 3400); juice.stamp('止'); audio.thunder();
+      juice.banner(S.stage(director.stopIdx + 1, stop), 3400); juice.stamp('止'); audio.thunder();
     }
   } else if (director.phase === 'stop') {
     vehicle.state.targetSpeed = 0;
@@ -365,7 +372,7 @@ function updateDirector(dt, time) {
   } else if (director.phase === 'boss') { vehicle.state.targetSpeed = 0; }
   else if (director.phase === 'clear') {
     vehicle.state.targetSpeed = 0; director.stateT += dt;
-    if (director.stateT > 2.2) { director.phase = 'drive'; director.stopIdx++; juice.banner('길이 열렸다', 2200); juice.stamp('進'); gun.state.bombs = gun.state.bombsMax; }
+    if (director.stateT > 2.2) { director.phase = 'drive'; director.stopIdx++; juice.banner(S.roadOpen, 2200); juice.stamp('進'); gun.state.bombs = gun.state.bombsMax; }
   } else vehicle.state.targetSpeed = 0;
 
   vehicle.update(dt);
@@ -463,7 +470,7 @@ renderer.setAnimationLoop((now) => {
 
   // 붉은 밤: 장갑 28% 미만이면 세계가 붉게 물든다
   const wantBlood = started && game.hp < 28;
-  if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner('마차가 불탄다 — 붉은 밤'); juice.stamp('危'); audio.thunder(); audio.setBgm('bloodnight'); }
+  if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner(S.bloodNight); juice.stamp('危'); audio.thunder(); audio.setBgm('bloodnight'); }
   if (!wantBlood && game.bloodNight) { game.bloodNight = false; if (!game.over && game.cont <= 0) audio.setBgm('wave'); }
   look.state.blood += ((game.bloodNight ? 1 : 0) - look.state.blood) * Math.min(1, rawDt * 2.5);
   fires.update(dt); juice.update(time);
@@ -496,9 +503,9 @@ renderer.setAnimationLoop((now) => {
   // 좌상단: 달릴 땐 궁궐까지 거리, 정차 땐 남은 처치 수, 보스전엔 BOSS
   if (game.started) {
     const stop = ROUTE.stops[director.stopIdx];
-    if (director.phase === 'stop' && stop) { waveEl.classList.add('stop'); waveN.textContent = Math.max(0, stop.quota - (horde.stats.kills - director.stopKills0)); waveL.textContent = stop.name; }
-    else if (director.phase === 'boss') { waveEl.classList.add('stop'); waveN.textContent = 'BOSS'; waveL.textContent = stop?.name ?? ''; }
-    else { waveEl.classList.remove('stop'); waveN.textContent = `${Math.max(0, Math.round(vpos.z - ROUTE.end))} m`; waveL.textContent = director.phase === 'dawn' ? '새벽' : '궁궐까지'; }
+    if (director.phase === 'stop' && stop) { waveEl.classList.add('stop'); waveN.textContent = Math.max(0, stop.quota - (horde.stats.kills - director.stopKills0)); waveL.textContent = S.place(stop.name); }
+    else if (director.phase === 'boss') { waveEl.classList.add('stop'); waveN.textContent = 'BOSS'; waveL.textContent = S.place(stop?.name ?? ''); }
+    else { waveEl.classList.remove('stop'); waveN.textContent = `${Math.max(0, Math.round(vpos.z - ROUTE.end))} m`; waveL.textContent = director.phase === 'dawn' ? S.dawn : S.toPalace; }
   }
 });
 

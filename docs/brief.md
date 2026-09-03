@@ -113,6 +113,12 @@
 - Web Analytics: Cloudflare Web Analytics 비콘(무료, 쿠키 없음). 사이트 `kingdombi.midagedev.com`(site_tag 7e588452…, RUM API 로 등록). 로컬(localhost)에선 비콘을 넣지 않는다(CORS 소음). 대시보드 → Analytics & Logs → Web Analytics.
 - 순위표 Worker CORS 에 새 오리진 추가.
 
+## 로케일 (2026-09-03)
+
+- 한/영. `src/i18n.js` 한 곳에 사전(`KO`/`EN`), `S` 로 현재 언어 문자열. 우선순위 `?lang=` → localStorage `kb.lang` → 브라우저 언어(ko 만 한국어, 나머지 영어). 타이틀 좌상단 `한국어 | EN` 토글(저장 후 새로고침).
+- 번역 대상: HUD 라벨, 타이틀 안내, CONTINUE, 배너(구역·스테이지·길이 열렸다·새벽·붉은 밤·보스 약점·격추·수리), 보스 이름(점수 글리프 巨人·恐龍은 `b.glyph` 로 분리), 연쇄 등급·마일스톤, 전적 카드 전부, 공유 문구·PNG 라벨, 순위표 표기. 한자 스탬프(鐵·滅·雷·進·止…)와 로고 '킹덤비'는 양쪽 공통 — 그래픽이다. 정차 지점·구역 이름은 world.js 한국어 그대로 두고 i18n 의 `PLACES_EN` 맵으로 번역한다.
+- SEO: 정적 HTML 은 한국어(title/description), 영문일 때 JS 가 `<html lang>`·title·description 을 덮어쓴다. `hreflang` ko/en/x-default, `og:locale:alternate` en_US. 영문 공유 링크는 `?lang=en`.
+
 ## 스택
 
 Web Analytics: Cloudflare Web Analytics 비콘(`index.html`, 사이트 `midagedev.github.io`, site_tag 7e588452…). 대시보드 → Analytics & Logs → Web Analytics. 순위표 Worker 와 같은 계정(midagedev@gmail.com).
