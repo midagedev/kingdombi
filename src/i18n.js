@@ -16,8 +16,9 @@ const PLACES_EN = {
 const KO = {
   docTitle: 'KINGDOMBI 킹덤비 — 조선 느와르 좀비 개틀링 레일 슈터',
   docDesc: '철갑 마차 위에서 개틀링을 돌려 조선의 밤을 뚫는 무료 웹 아케이드 슈터. 좀비 떼, 거대 보스, 그리고 궁궐 앞의 恐龍. 설치 없이 폰·PC 브라우저에서 바로 플레이. 매일 바뀌는 길, 온라인 순위표.',
+  calm: '저자극',
   kills: '처치', armor: '장갑', toPalace: '궁궐까지', dawn: '새벽',
-  titleLines: (day, dist, mobile) => `오늘의 길 ${day} · 궁궐까지 ${dist} m · 恐龍이 기다린다<br>${mobile ? '누른 자리가 조이스틱 — 기울여 조준, 누른 동안 발사' : '드래그로 조준, 누른 동안 발사 · 우클릭·Space 로 雷'}<br>雷 는 비격진천뢰 — 조준 링 자리에 떨어진다<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라`,
+  titleLines: (day, dist, mobile) => `오늘의 길 ${day} · 궁궐까지 ${dist} m · 恐龍이 기다린다<br>${mobile ? '누른 자리가 조이스틱 — 기울여 조준, 누른 동안 발사' : '클릭한 곳으로 조준, 누른 동안 발사 · 방향키·Shift 도 된다 · 우클릭·Space 로 雷'}<br>雷 는 비격진천뢰 — 조준 링 자리에 떨어진다<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라`,
   contHint: '누르면 코인 한 개',
   place: (s) => s,
   stage: (n, stop) => `STAGE ${n} · ${stop.name} · ${stop.sub}`,
@@ -49,8 +50,9 @@ const KO = {
 const EN = {
   docTitle: 'KINGDOMBI — Joseon-noir zombie gatling rail shooter',
   docDesc: 'Free browser arcade shooter: crank a gatling gun from an armored wagon through a Joseon night of zombies, giant bosses, and a Tyrannosaur at the palace gate. No install, phone or PC. A new road every day, online leaderboard.',
+  calm: 'CALM',
   kills: 'KILLS', armor: 'ARMOR', toPalace: 'TO THE PALACE', dawn: 'DAWN',
-  titleLines: (day, dist, mobile) => `TODAY'S ROAD ${day} · ${dist} m to the palace · the Tyrant waits<br>${mobile ? 'touch anywhere = joystick — tilt to aim, hold to fire' : 'drag to aim, hold to fire · right-click / Space = 雷'}<br>雷 is the thunder bomb — it lands on the aim ring<br>armor is all you have — shoot or ram the repair crates`,
+  titleLines: (day, dist, mobile) => `TODAY'S ROAD ${day} · ${dist} m to the palace<br>${mobile ? 'touch anywhere = joystick — tilt to aim, hold to fire' : 'click to aim, hold to fire · arrows + Shift work too · right-click / Space = 雷'}<br>雷 is the thunder bomb — it lands on the aim ring<br>armor is all you have — shoot or ram the repair crates`,
   contHint: 'TAP TO INSERT COIN',
   place: (s) => PLACES_EN[s] || s,
   stage: (n, stop) => `STAGE ${n} · ${PLACES_EN[stop.name] || stop.name} · ${PLACES_EN[stop.sub] || stop.sub}`,

@@ -22,7 +22,7 @@ function makeFlashTexture() {
   const t = new THREE.CanvasTexture(c); return t;
 }
 
-export function createGun(scene, physics, horde, buildings, fx, audio, look, { parent = scene, onCollapse }) {
+export function createGun(scene, physics, horde, buildings, fx, audio, look, { parent = scene, onCollapse, camera = null }) {
   // ── 모델: 포좌(parent = 마차 mount) 위 받침 기둥 + 6열 개틀링 ──
   const root = new THREE.Group(); parent.add(root);
   const base = cyl(0.34, 0.12, IRON, 16); base.position.y = 0.06; root.add(base);
@@ -74,7 +74,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
+  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -181,7 +181,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const show = state.showAim && kind !== 'none';
     ring.visible = show; lock.visible = show && (kind === 'zombie' || kind === 'boss');
     if (show) {
-      ring.position.set(a.x, 0.06, a.z); const rs = kind === 'zombie' || kind === 'boss' ? 0.8 : 1.0; ring.scale.setScalar(rs);
+      ring.position.set(a.x, 0.06, a.z); const rs = kind === 'zombie' || kind === 'boss' ? 0.8 : 1.0;
+      const cd = camera ? camera.position.distanceTo(ring.position) : 22; const ss = Math.max(1, cd * 0.045);   // 화면에서 늘 같은 크기로(세로 폰에서 점이 되지 않게)
+      ring.scale.setScalar(rs * ss); lock.scale.setScalar(1.1 * ss);
       RET.color.setHex(kind === 'zombie' || kind === 'boss' ? 0xff4a3c : 0xffb347);
       lock.position.set(a.x, a.y, a.z);
     }
@@ -256,7 +258,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
-  function update(dt, time) {
+  let stickyK = 1;
+  function update(dt, time, rawDt = dt) {
     // 스핀업/다운
     const want = state.firing && state.jammed <= 0 ? 1 : 0;
     state.spin += (want - state.spin) * Math.min(1, dt * (want ? 2.6 : 1.4));
@@ -284,12 +287,20 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 반동 감쇠
     state.recoil *= Math.exp(-dt * 12);
     // 조준 반영
-    // 조이스틱: 기울기 → 회전 속도(데드존 0.12, 지수 곡선 — 살짝 기울이면 정밀, 끝까지 밀면 휙 돈다)
-    if (state.stick.active) {
+    // 조이스틱·키보드: 기울기 → 회전 속도(데드존 0.12, 지수 곡선 — 살짝 기울이면 정밀, 끝까지 밀면 휙 돈다)
+    // 실시간(rawDt)으로 돈다 — 히트스톱·사망 슬로우·CONTINUE 중에도 조준은 느려지지 않는다
+    // 점착 조준: 조준선이 좀비·보스 위에 있으면 회전이 절반 가까이 느려진다(콘솔 슈터의 aim friction). 0.1초 보간으로 떨림 없음.
+    const onTarget = state.aim.kind === 'zombie' || state.aim.kind === 'boss';
+    stickyK += ((onTarget ? 0.55 : 1) - stickyK) * Math.min(1, rawDt * 10);
+    const kx = (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
+    const ky = (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
+    const sx = state.stick.active ? state.stick.x : kx, sy = state.stick.active ? state.stick.y : ky;
+    if (sx || sy) {
       const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
-      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(state.stick.x) * 2.6 * dt, -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(state.stick.y) * 1.3 * dt, -0.62, state.pitchMax);
+      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * 2.6 * stickyK * rawDt, -1.5, 1.5);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * 1.3 * stickyK * rawDt, -0.62, state.pitchMax);
     }
+    state.firing = state.firingPtr || keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight');
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     yawPivot.updateWorldMatrix(true, true);
@@ -310,8 +321,22 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   // 터치(또는 ?stick=1): 떠다니는 조이스틱 — 아무 데나 누르면 그 자리에 스틱이 생기고, 기울인 만큼 포신이 돈다. 누르고 있는 동안 발사.
   //   엄지가 반지름을 넘으면 밑판이 따라온다(끝까지 밀어도 손을 떼지 않는다). 두 번째 손가락(雷 버튼)은 스틱을 건드리지 않는다.
   // 마우스: 드래그 상대 조준(예전 그대로), 우클릭 = 雷. Space 는 main 이 묶는다.
+  const keys = new Set();
+  // 마우스 클릭 한 번 = 그 자리로 조준(화면점 → 가슴 높이 평면). 이후 드래그가 다듬는다. 카메라가 조준각을 따라 돌기 때문에 '커서를 계속 따라가기'는 하지 않는다(폭주).
+  const _ndc = new THREE.Vector2(), _rc = new THREE.Raycaster(), _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.1), _pt = new THREE.Vector3();
+  function aimAtScreen(cx, cy) {
+    if (!camera) return;
+    _ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); _rc.setFromCamera(_ndc, camera);
+    if (!_rc.ray.intersectPlane(_plane, _pt)) return;
+    muzzle.getWorldPosition(_o);
+    const dx = _pt.x - _o.x, dz = _pt.z - _o.z; if (dz > -2) return;   // 마차 뒤·옆은 무시
+    state.yaw = THREE.MathUtils.clamp(Math.atan2(-dx, -dz), -1.5, 1.5);
+    state.pitch = THREE.MathUtils.clamp(Math.atan2(_pt.y - _o.y, Math.hypot(dx, dz)), -0.62, state.pitchMax);
+  }
   function attachInput(el, { stickEl = null, forceStick = false } = {}) {
     let lastX = 0, lastY = 0, mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
+    addEventListener('keydown', (e) => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Enter', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); } });
+    addEventListener('keyup', (e) => keys.delete(e.code)); addEventListener('blur', () => keys.clear());
     const R = 54;
     const k = () => 2.6 / Math.max(320, innerWidth);
     const knob = stickEl?.firstElementChild;
@@ -324,11 +349,11 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     el.addEventListener('pointerdown', (e) => {
       if (forceStick || e.pointerType === 'touch') {
         if (stickId !== -1) return;
-        stickId = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; state.stick.active = true; state.stick.x = 0; state.stick.y = 0; state.firing = true;
+        stickId = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; state.stick.active = true; state.stick.x = 0; state.stick.y = 0; state.firingPtr = true;
         showStick(sx0, sy0); cap(e); return;
       }
       if (e.button === 2) { hooks.onBombKey?.(); return; }
-      mouseActive = true; lastX = e.clientX; lastY = e.clientY; state.firing = true; cap(e);
+      mouseActive = true; lastX = e.clientX; lastY = e.clientY; state.firingPtr = true; cap(e); aimAtScreen(e.clientX, e.clientY);
     });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerId === stickId) {
@@ -345,7 +370,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const stop = (e) => {
       if (e.pointerId === stickId) { stickId = -1; state.stick.active = false; state.stick.x = state.stick.y = 0; hideStick(); }
       else if (e.pointerType !== 'touch') mouseActive = false;
-      state.firing = stickId !== -1 || mouseActive;
+      state.firingPtr = stickId !== -1 || mouseActive;
     };
     el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
   }

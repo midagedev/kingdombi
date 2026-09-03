@@ -21,6 +21,9 @@ const DAY_SEED = [...DAY].reduce((h, ch) => (Math.imul(h ^ ch.charCodeAt(0), 167
 const dayRand = rng(DAY_SEED ^ 0x9e3779b9);
 const BOARD_URL = 'https://kingdombi-scores.midagedev.workers.dev';
 const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+// 저자극(2026-09-03): 반전 프레임 없음·플래시 상한·흔들림 30%. OS 설정(prefers-reduced-motion) 또는 ?calm=1 또는 타이틀 토글.
+let calmStore = null; try { calmStore = localStorage.getItem('kb.calm'); } catch {}
+let CALM = q.has('calm') || calmStore === '1' || (calmStore !== '0' && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.setPixelRatio(Math.min(devicePixelRatio, isMobile ? 1.5 : 2));   // 폰: 두 개의 풀해상도 RT + 그림자 패스라 1.5 로 캡
@@ -105,7 +108,7 @@ hud.innerHTML = `
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
   <div id="stick"><i></i></div>
   <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">${S.titleLines(DAY, ROUTE.start - ROUTE.end, isMobile)}</div></div>
-  <div id="lang"><span data-l="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</span><span data-l="en" class="${LANG === 'en' ? 'on' : ''}">EN</span></div>
+  <div id="lang"><span data-l="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</span><span data-l="en" class="${LANG === 'en' ? 'on' : ''}">EN</span><span id="calm" class="${CALM ? 'on' : ''}">${S.calm}</span></div>
   <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">${S.contHint}</div></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
@@ -130,7 +133,22 @@ style.textContent = `
   #stick.hint { opacity:.22; transition: opacity .4s; } #stick.on { opacity:.8; }
   #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
   #lang { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; font: 300 11px/1 var(--mono); letter-spacing:.2em; pointer-events:auto; display:flex; gap:14px; opacity:.55; }
-  #lang span { cursor:pointer; padding: 6px 0; } #lang span.on { color:#e6c87a; border-bottom:1px solid #e6c87a; }
+  #lang span { cursor:pointer; padding: 6px 0; } #lang span.on { color:#e6c87a; border-bottom:1px solid #e6c87a; } #lang #calm { margin-left: 10px; }
+  #c { cursor: crosshair; }
+  #hud { text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 6px rgba(0,0,0,.5); }
+  #title .t3 { max-width: 88vw; text-wrap: balance; }
+  /* 폰(세로·좁은 화면): 라벨 크게, 바 두껍게, 雷 버튼 엄지 크기 */
+  @media (max-width: 600px) {
+    #score .lbl, #wave .lbl, #gauges .lbl { font-size: 12px; opacity: .8; }
+    #score .lbl i { font-size: 14px; } #gauges .lbl span { font-size: 15px; }
+    #wave #waveN { font-size: 26px; }
+    #hp { height: 4px; } #hp i { height: 5px; top: -0.5px; }
+    #boss div { height: 3px !important; } #boss i { height: 4px !important; } #boss span { font-size: 12px !important; opacity: .9 !important; }
+    #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
+    #bomb { width: 76px; height: 76px; right: 16px; } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
+    #title .t1 { font-size: 64px; } #title .t3 { font-size: 14px; line-height: 1.8; }
+    #lang { font-size: 12px; }
+  }
   #title, #end, #cont { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
   #end { background: rgba(0,0,0,.76); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   #title .mark, #cont .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
@@ -148,7 +166,7 @@ document.head.appendChild(style);
 const $ = (id) => document.getElementById(id);
 // 로케일: <html lang> 과 문서 제목·설명(영문일 때 덮어쓴다 — 정적 HTML 은 한국어)
 document.documentElement.lang = LANG; document.title = S.docTitle; document.querySelector('meta[name=description]')?.setAttribute('content', S.docDesc);
-$('lang').addEventListener('pointerdown', (e) => { e.stopPropagation(); const l = e.target.dataset.l; if (l && l !== LANG) setLang(l); });
+$('lang').addEventListener('pointerdown', (e) => { e.stopPropagation(); const l = e.target.dataset.l; if (l && l !== LANG) setLang(l); if (e.target.id === 'calm') { CALM = !CALM; e.target.classList.toggle('on', CALM); try { localStorage.setItem('kb.calm', CALM ? '1' : '0'); } catch {} } });
 
 // ── 부팅 ──
 const t0 = performance.now();
@@ -235,7 +253,7 @@ const fires = createFires(scene);
 const juice = createJuice(hud);
 const nightlife = createNightlife(scene, world.buildings, { playerZ: ROUTE.start, maxLights: 0 });   // 라이트 예산: 거리등 2 + 총구 + 화재 1
 const audio = createAudio();
-const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { parent: vehicle.mount, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.center, sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); addScore(b.kind === 'palace' ? 20000 : 800, b.kind === 'palace' ? '宮' : '家'); } else addScore(50); } });
+const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { camera, parent: vehicle.mount, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.center, sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); addScore(b.kind === 'palace' ? 20000 : 800, b.kind === 'palace' ? '宮' : '家'); } else addScore(50); } });
 gun.attachInput(canvas, { stickEl: $('stick'), forceStick: q.has('stick') });   // 터치는 조이스틱, 마우스는 드래그. ?stick=1 로 강제
 const bosses = createBosses(scene, physics, {
   fx, audio, look, juice, horde, gun, vehicle, game, hud, camera,
@@ -412,7 +430,7 @@ renderer.setAnimationLoop((now) => {
   const reachedBefore = game.lastReached;
   if (started && game.demo) {
     // 자동 데모: 보스가 있으면 약점(노출 코어 > 쇠판 > QTE 덩어리), 아니면 가장 가까운 좀비를 겨눈 채 훑는다 (클립 녹화용)
-    gun.state.firing = game.cont <= 0 && !q.has('nofire');   // ?nofire=1: 조준만 하고 쏘지 않는다(보스 스크린샷용)
+    gun.state.firingPtr = game.cont <= 0 && !q.has('nofire');   // gun.update 가 firing 을 포인터·키 상태에서 다시 계산하므로 포인터 쪽을 흉내낸다   // ?nofire=1: 조준만 하고 쏘지 않는다(보스 스크린샷용)
     gun.muzzle.getWorldPosition(muzzleW);
     let tx = null;
     if (bosses.aimPoint(aimW)) tx = aimW;
@@ -444,13 +462,13 @@ renderer.setAnimationLoop((now) => {
     // 장갑 피해는 풀에 쌓아 초당 9 까지만 빠진다 — 떼가 한꺼번에 붙어도 최소 11초는 버티며 쏴 낼 수 있다
     if (horde.stats.reached > reachedBefore) { game.pendingDamage += horde.stats.reachDamage; horde.stats.reachDamage = 0; look.state.flash = Math.max(look.state.flash, 0.1); game.lastReached = horde.stats.reached; }
     if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
-    gun.update(dt, time);
+    gun.update(dt, time, rawDt);
     physics.step(dt, time);
     fx.shards.update(dt, time); fx.blood.update(dt, time); fx.gibs.update(dt, time); fx.decals.update(time);
     audio.setGroan(Math.min(1, horde.stats.alive / 200) * 0.3);
   } else {
     horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경)
-    gun.state.firing = false;
+    gun.state.firingPtr = false;
     gun.update(dt, time);
     vehicle.update(dt);
   }
@@ -483,6 +501,9 @@ renderer.setAnimationLoop((now) => {
   if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = 0; if (game.demo) endGame(false); else { game.cont = 9.99; contEl.style.opacity = 1; contEl.style.pointerEvents = 'auto'; } } }
   if (game.cont > 0) { game.cont -= rawDt; contN.textContent = Math.max(0, Math.ceil(game.cont - 0.99)); if (game.cont <= 0) { game.cont = 0; contEl.style.opacity = 0; endGame(false); } }
 
+  // 피격 붉은 테두리: 피해 풀이 빠지는 동안 켜져 있다(한 순간이 아니라 '지금 맞고 있다')
+  look.state.hurt += (((started && game.pendingDamage > 0.2) ? Math.min(0.8, 0.3 + game.pendingDamage / 30) : 0) - look.state.hurt) * Math.min(1, rawDt * 8);
+  if (CALM) { look.state.invert = 0; look.state.flash = Math.min(look.state.flash, 0.25); game.shake *= 0.3; game.hitstop = Math.min(game.hitstop, 0.2); }
   renderer.info.reset();
   look.render(now / 1000);
   if (captureRequest) { const cb = captureRequest; captureRequest = null; canvas.toBlob((b) => cb(b), 'image/png'); }
