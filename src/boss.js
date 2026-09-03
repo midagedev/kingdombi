@@ -53,6 +53,8 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.hit = (p, dmg, x, y, z, dirX, dirZ, time) => {
       if (!b.alive) return;
       b.flash = 1; b.flinch = Math.min(1, b.flinch + 0.35);
+      // 공격 취소(2026-09-03 掃 루프): 예비 동작(巨人 wind · 恐龍 charge) 중 집중 사격이 임계를 넘으면 비틀거리며 공격이 무산된다 — 피할 수 없는 정기 피해가 아니라 '팔이 올라가면 쏘라'
+      if (b.state === 'wind' || b.state === 'charge') { b.interrupt = (b.interrupt || 0) + dmg; if (b.interrupt >= (b.glyph === '巨人' ? 45 : 70)) { b.interrupt = 0; b.stagger = 0.8; onScore(800, '斬'); game.hitstop = Math.max(game.hitstop, 0.1); audio.roar?.(0.4); } }
       fx.blood.burst(x, y, z, 3, { dirX: dirX * 0.5, dirY: 0.4, dirZ: dirZ * 0.5, spread: 0.8, power: 5, scale: 1, time });
       if (p.kind === 'plate' || p.kind === 'skull') {   // 머리 투구도 쇠판이다
         p.hp -= dmg; fx.shards.burst(x, y, z, 2, { dirX: -dirX * 0.4, dirY: 0.5, dirZ: -dirZ * 0.4, spread: 0.6, power: 3, scale: 0.7, time }); audio.hitStone();
@@ -141,7 +143,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
         if ((b.lastStep < 0) !== (stepPhase < 0)) { const side = stepPhase < 0 ? -1 : 1; const fx0 = root.position.x + Math.cos(root.rotation.y) * side * 0.12 * S, fz0 = root.position.z - Math.sin(root.rotation.y) * side * 0.12 * S; if (horde.crushNear(fx0, fz0, 3.2, time)) { audio.stomp?.(); game.shake = Math.max(game.shake, 0.35); } }
         b.lastStep = stepPhase;
       } else if (b.state === 'wind') {
-        if (b.stateT > 0.9) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(10); horde.crushNear(root.position.x - ax.x * 6, root.position.z - ax.z * 6, 7, time); }   // 마차 반대쪽 6m
+        if (b.stateT > 1.3) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(7); horde.crushNear(root.position.x - ax.x * 6, root.position.z - ax.z * 6, 7, time); }   // 마차 반대쪽 6m
       } else if (b.state === 'slam') { if (b.stateT > 0.5) { b.state = 'rest'; b.stateT = 0; } }
       else if (b.state === 'rest') { if (b.stateT > 1.6) { b.state = dist > b.stopDist + 3 ? 'walk' : 'wind'; b.stateT = 0; } }
       // 걷기 애니메이션
@@ -155,7 +157,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       shoulders[0].rotation.x = -1.2 + Math.sin(w + Math.PI) * 0.5 * amp; shoulders[0].rotation.z = -0.4;
       elbows[0].rotation.x = -0.9;
       // 오른팔: 내려치기
-      if (b.state === 'wind') { const k = Math.min(1, b.stateT / 0.9); shoulders[1].rotation.x = -1.2 - k * 1.6; elbows[1].rotation.x = -0.3; }
+      if (b.state === 'wind') { const k = Math.min(1, b.stateT / 1.3); shoulders[1].rotation.x = -1.2 - k * 1.6; elbows[1].rotation.x = -0.3; }
       else if (b.state === 'slam') { const k = Math.min(1, b.stateT / 0.18); shoulders[1].rotation.x = -2.8 + k * 3.4; elbows[1].rotation.x = -0.2; }
       else { shoulders[1].rotation.x += (-1.2 + Math.sin(w) * 0.5 * amp - shoulders[1].rotation.x) * Math.min(1, dt * 4); elbows[1].rotation.x = -0.9; }
       shoulders[1].rotation.z = 0.4;
@@ -332,6 +334,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     if (boss.alive && boss.hp <= 0) die(boss, time);   // 쇠판을 안 거친 피해(신기전·비격진천뢰 근접)도 여기서 죽는다
     if (boss.alive) {
       if (boss.stagger > 0) { boss.stagger -= dt; boss.staggerPose?.(Math.max(0, boss.stagger) / 0.8); if (boss.state === 'wind' || boss.state === 'charge') { boss.state = boss.glyph === '巨人' ? 'rest' : 'hold'; boss.stateT = 0; } }
+      if (boss.state !== 'wind' && boss.state !== 'charge') boss.interrupt = 0;
       boss.tick(dt, time); if (boss.stagger > 0) boss.staggerPose?.(Math.max(0, boss.stagger) / 0.8); boss.updateBoxes();
       // 움찔: 뿌리 회전을 잠깐 흔든다(총알이 박히는 게 몸으로 보인다)
       boss.root.rotation.z = (Math.random() - 0.5) * 0.05 * boss.flinch; boss.root.rotation.x = (Math.random() - 0.5) * 0.03 * boss.flinch;

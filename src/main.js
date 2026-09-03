@@ -135,6 +135,9 @@ style.textContent = `
   #ret .c { fill:#ffb347; transform-origin: 50% 50%; transition: transform .06s; }
   #ret.fire svg { transform: scale(1.12); } #ret.fire .o { stroke:#ffb347; } #ret.fire .spin { animation-duration: 1.2s; }
   #ret.hit .c { transform: scale(2.2); }
+  #hud i.warn { position:absolute; left:0; top:0; width:44px; height:44px; border:2px solid var(--red); border-radius:50%; opacity:0; pointer-events:none; box-shadow: 0 0 10px rgba(193,18,31,.9), inset 0 0 10px rgba(193,18,31,.6); will-change: transform; }
+  #hud i.warn::after { content:''; position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px; border-radius:50%; background: var(--red); }
+  #ret.jam .o { stroke: rgba(160,160,160,.55) !important; stroke-dasharray: 9 7; } #ret.jam .c { fill: #777; } #ret.jam .spin { animation-play-state: paused; }
   @keyframes retspin { to { transform: rotate(360deg); } }
   #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
   #lang { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; font: 300 11px/1 var(--mono); letter-spacing:.2em; pointer-events:auto; display:flex; gap:14px; opacity:.55; }
@@ -199,7 +202,8 @@ const vpos = vehicle.pos;   // 좀비 표적·스폰·카메라·조명이 모�
 const game = { started: false, over: false, paused: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: Infinity, timeScale: 1, hitstop: 0, shake: 0, razed: 0, bloodNight: false, dying: 0, cont: 0, credits: 0, score: 0, lastReached: 0, nextLightning: 6, hpFx: 0, god: q.has('god'), demo: q.has('demo') };
 
 // ── 연출자(director): 준비 → 달림 ↔ 정차 → 보스 → 새벽 ──
-const director = { phase: 'title', stopIdx: 0, stopKills0: 0, stopT0: 0, district: null, lastBlast: 0, lastCull: -1, readyT: 0, stateT: 0, ramming: false, demoBombT: 0, flipFrom: 0, flipTo: 0, flipNext: 'drive', driveSpeed: 5.0 };
+const director = { phase: 'title', stopIdx: 0, stopKills0: 0, stopT0: 0, district: null, lastBlast: 0, lastCull: -1, readyT: 0, stateT: 0, ramming: false, demoBombT: 0, flipFrom: 0, flipTo: 0, flipNext: 'drive', driveSpeed: 3.2,   // 5.0 → 3.2(2026-09-03): 좀비(5.2~7.5 m/s)와의 상대속도가 0.2~2.5 였다 — 35~60 m 뒤에 흩어진 채 영원히 안 닥쳤다(실측 명중 11%). 3.2 면 2~4 m/s 로 밀물처럼 닥친다
+  wave: { n: 0, size: 0, t0: 0, active: false, calmT: 0.6, sprintT: 0 } };   // 掃 루프(docs/loop.md): 파가 차오르고 → 쓸어버리고 → 길이 비고 질주 → 다음 파
 // ── 앞뒤 전환(facing): 게임은 두 얼굴이다 ──
 //   추격(π) — 마차가 달리고 떼가 뒤에서 쫓아온다. 카메라는 마차 앞쪽에서 뒤를 본다. 조준은 한 방향으로 모여 관통이 산다.
 //   대치(0) — 보스 앞에서 선다. 카메라가 마차를 축으로 180° 돌아 앞을 본다. 잡몹은 얇게 깔린다.
@@ -217,9 +221,9 @@ const spawn = {
       const g = path.segs.find((g) => g.s1 !== Infinity && s > g.s1 - 6 && s < g.s1 + 70);
       if (g && r < 0.35) return path.atSeg(g, g.s1 + 8 + Math.random() * (ROUTE.stub - 10), (Math.random() - 0.5) * 10, o);
       // 지붕(2026-09-03): 뒤 12~52 m 길가 집 지붕 위에 서서 처마로 기어 나와 떨어진다 — 실루엣이 하늘에 걸려 잘 읽힌다
-      if (r >= 0.35 && r < 0.55) { const hs = roofHouses(s - 52, s - 12); if (hs.length) { const b = hs[Math.floor(Math.random() * hs.length)], sz = b.bounds.getSize(roofSz); return { x: b.center.x + (Math.random() - 0.5) * sz.x * 0.3, z: b.center.z + (Math.random() - 0.5) * sz.z * 0.3, roof: b }; } }
-      if (r < 0.45) return path.at(s - 20 - Math.random() * 50, (Math.random() - 0.5) * 12, o);
-      return path.at(s - 14 - Math.random() * 56, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 22), o);
+      if (r >= 0.35 && r < 0.55) { const hs = roofHouses(s - 40, s - 10); if (hs.length) { const b = hs[Math.floor(Math.random() * hs.length)], sz = b.bounds.getSize(roofSz); return { x: b.center.x + (Math.random() - 0.5) * sz.x * 0.3, z: b.center.z + (Math.random() - 0.5) * sz.z * 0.3, roof: b }; } }
+      if (r < 0.45) return path.at(s - 12 - Math.random() * 28, (Math.random() - 0.5) * 12, o);   // 10~40 m(전 14~70): 가까이 나와야 닥친다
+      return path.at(s - 10 - Math.random() * 30, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 22), o);
     }
     if (r < 0.55) return path.at(s + 45 + Math.random() * 55, (Math.random() - 0.5) * 34, o);
     return path.at(s + 30 - Math.random() * 42, (Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 24), o);
@@ -228,7 +232,7 @@ const spawn = {
 const roofSz = new THREE.Vector3();
 const roofHouses = (s0, s1) => world.buildings.filter((b) => (b.kind === 'choga' || b.kind === 'giwa') && b.alive && b.s > s0 && b.s < s1 && Math.abs(b.lat) < 20);
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
-const BOSS_BUDGET = Math.round(zombieCount * 0.25);   // 대치 중엔 떼를 1/4 로 — 보스가 주인공이다
+const BOSS_BUDGET = Math.round(zombieCount * 0.04);   // 대치 중엔 떼를 4% 로(전 1/4 — 선 마차엔 모든 놈이 닿아 덤벼든다. 실측: 8%·피해 절반도 20초에 죽었다) — 보스가 주인공, 잡몹은 장식
 const horde = createHorde(scene, physics, { count: zombieCount, spawn, target: vpos, buildings: world.buildings, path });
 horde.uniforms.uMoonDir.value.copy(moonDir);
 
@@ -241,6 +245,8 @@ function addScore(n, glyph, noMult = false) {
 }
 horde.hooks.onKill = (type, x, z, time, cause) => {
   if (cause === 'impale') { addScore(30, null, true); fx.blood.burst(x, 1.1, z, 8, { dirX: (x - vpos.x) * 0.3, dirY: 0.5, spread: 0.9, power: 5, scale: 1, time }); return; }   // 가시에 꿰임: 헐값, 배율 없음(붙게 두는 게 이득이면 안 된다)
+  if (cause === 'strike') return;   // 덤벼들어 물고 꿰인 놈 — 점수 없음(피해는 이미 받았다)
+  if (cause === 'save') { addScore(300, '斬'); game.hitstop = Math.max(game.hitstop, 0.05); juice.onKill(time, horde.stats.kills); return; }   // 웅크린 놈을 제때 죽였다 — 한 박자 슬로모
   if (cause === 'auto') { addScore(Math.round(KILL_SCORE[type] * 0.5), null, true); return; }   // 스킬 자동공격: 절반 점수·배율 없음 — 직접 쏘는 게 늘 유리하다
   if (director.ramming) { addScore(30, null, true); return; }
   juice.onKill(time, horde.stats.kills);
@@ -250,6 +256,8 @@ horde.hooks.onKill = (type, x, z, time, cause) => {
 // 폭탄 좀비 폭발: 반경 안 좀비 즉사(연쇄), 건물 부위 파괴, 피·파편·플래시·굉음
 // 사지 상실·헤드샷(2026-09-03): 팔이 떨어지거나 머리가 날아가면 그 자리에서 살점·피·안개가 터진다
 horde.hooks.onLimb = (x, y, z, dx, dz, time, big) => { fx.gibs.burst(x, y, z, big > 1 ? 14 : 7, { dirX: dx * 0.7, dirY: 0.5, dirZ: dz * 0.7, spread: 1.0, power: 5, scale: 1.1, time }); fx.blood.burst(x, y, z, big > 1 ? 12 : 6, { dirX: dx * 0.6, dirY: 0.5, dirZ: dz * 0.6, spread: 0.9, power: 6, scale: 1, time }); fx.mist.puff(x, y, z, big > 1 ? 4 : 2, dx, dz, time); if (big > 1) addScore(40, null, true); };
+// 덤벼들기 적중(2026-09-03): 피해는 reachDamage 로 흐르고(초당 9 까지), 여기선 '맞았다'를 화면에 — 섬광·흔들림·마차 위 피
+horde.hooks.onStrike = (x, z, type, time) => { look.state.flash = Math.max(look.state.flash, type === 1 ? 0.55 : 0.32); game.shake = Math.max(game.shake, type === 1 ? 1.6 : 0.9); fx.blood.burst((x + vpos.x) / 2, 1.8, (z + vpos.z) / 2, type === 1 ? 24 : 10, { dirY: 0.7, spread: 1.2, power: 6, scale: 1.1, time }); audio.collapse(type === 1 ? 0.9 : 0.4); };
 horde.hooks.onExplode = (x, z, time) => {
   const R = 6.5;
   fx.blood.burst(x, 1.2, z, 40, { dirY: 0.8, spread: 1.6, power: 12, scale: 1.4, time });
@@ -347,6 +355,7 @@ function insertCoin() {
   audio.start(); audio.coin(); setTimeout(() => audio.setBgm('wave'), 700);
   cine.hide(); hud.classList.remove('title'); $('lang').classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
+  horde.trimTo(0, game.time); horde.pool = 0;   // 타이틀에 깔린 떼는 코인과 함께 치운다 — 출발 준비 1.6초 동안 덤벼들어 장갑 14 를 깎았다(실측)
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
   if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vehicle.state.s = ROUTE.stops[i].s; vehicle.update(0); director.district = districtAt(sV()); facing.rel = 0; facing.a = vehicle.state.heading; facing.chase = false; horde.chase = false; cullBuildings(); director.readyT = 0; }
 }
@@ -443,7 +452,7 @@ function startFlip(to, then, time) {
   director.flipFrom = facing.rel; director.flipTo = to; director.flipThen = then;
   director.phase = 'flip'; director.stateT = 0;
   facing.chase = Math.abs(to) > 1; horde.chase = facing.chase;
-  if (facing.chase) applyDistrict(districtAt(sV())); else horde.speedMul = 1;   // 추격전은 마차가 달아나므로 떼가 구역 배율만큼 빨라야 붙는다
+  if (facing.chase) { applyDistrict(districtAt(sV())); director.wave.active = false; director.wave.calmT = 1.2; horde.pool = 0; horde.strikeMul = 1; horde.spawnRate = 30; } else horde.speedMul = 1;   // 추격전은 마차가 달아나므로 떼가 구역 배율만큼 빨라야 붙는다. 추격으로 돌 때 파 시계를 다시 맞춘다
   horde.recycleSide(facing.chase ? -1 : 1, time);
   cullBuildings();   // 전환 중엔 양방향 창 — 카메라가 돌아가며 보게 될 쪽 집이 미리 켜져 있어야 한다
 }
@@ -455,10 +464,22 @@ function applyDistrict(d) {
 function toBoss(time) {
   const s = ROUTE.stops[director.stopIdx];
   director.phase = 'boss'; director.stopT0 = time;
-  horde.budget = BOSS_BUDGET; horde.trimTo(BOSS_BUDGET, time); Object.assign(horde.mix, s.mix);
+  // 대치 잡몹: 4%·초당 0.4 마리·피해 1/4(2). 위협은 보스가 준다(내려찍기 10·물기 15·기와 12)
+  horde.budget = BOSS_BUDGET; horde.pool = Infinity; horde.strikeMul = 0.25; horde.spawnRate = 0.4; director.wave.active = false; horde.trimTo(BOSS_BUDGET, time); Object.assign(horde.mix, s.mix);
   const f = path.fwd(sV(), tmpV); path.at(sV() + (s.boss === 'rex' ? 40 : 48), 0, aimW);
   bosses.spawn(s.boss, aimW.x, aimW.z, time, { x: -f.x, z: -f.z });   // axis = 보스→마차
   path.at(sV() + 12 + Math.random() * 6, (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), aimW); pickups.spawn(aimW.x, aimW.z, 'stop');
+}
+function startWave(time) {
+  const W = director.wave; W.n++; W.active = true; W.t0 = time;
+  W.size = Math.min(220, Math.round((56 + 18 * W.n) * (director.district?.cap ?? 0.75)));
+  horde.spawnRate = W.n === 1 ? 12 : 30;   // 1파는 천천히(마차가 아직 느리다 — 30/초로 쏟으면 첫 6초에 장갑 −33)   // 1파 55 → 69 → 82 … 학살감은 밀도에서 온다(26+12n 은 18초에 29 마리 — 심심했다)
+  if (horde.stats.alive > W.size) horde.trimTo(W.size, time);        // 타이틀에 깔려 있던 270 마리가 1파가 되면 40초가 걸린다 — 먼 놈부터 조용히 치운다(전환 회전 중이라 안 보인다)
+  horde.startWave(Math.max(0, W.size - horde.stats.alive), time);   // 이미 서 있는 놈들도 이번 파다
+}
+function clearWave(time) {
+  const W = director.wave; W.active = false; W.calmT = 2.0; W.sprintT = 3.0;
+  juice.stamp('掃'); juice.banner(S.sweep(W.size, time - W.t0), 2600); addScore(W.size * 30, '掃'); audio.collapse(0.7);
 }
 function updateDirector(dt, time) {
   const stop = ROUTE.stops[director.stopIdx];
@@ -467,7 +488,7 @@ function updateDirector(dt, time) {
     // 출발과 동시에 카메라가 돌아 뒤를 본다 — 마을이 쏟아낸 떼가 쫓기 시작한다
     if (director.readyT > 1.6) {
       if (q.get('boss')) toBoss(time);   // 디버그: 곧바로 대치(앞을 본 채로)
-      else { juice.banner('GO', 900); juice.stamp('進'); startFlip(Math.PI, () => { director.phase = 'drive'; }, time); }
+      else { juice.banner('GO', 900); juice.stamp('進'); horde.trimTo(0, time); startFlip(Math.PI, () => { director.phase = 'drive'; }, time); }   // 타이틀에 깔린 떼는 치운다 — 1파가 회전 중에 뒤에서 쏟아진다
     }
   } else if (director.phase === 'flip') {
     vehicle.state.targetSpeed = director.flipTo === 0 ? 0 : director.driveSpeed;
@@ -479,7 +500,17 @@ function updateDirector(dt, time) {
   } else if (director.phase === 'drive') {
     // 보스 지점 앞에서만 미리 감속(v²/2a) — 넘어가서 서면 恐龍이 문루 안에 선다. 카드 지점은 서지 않고 지나간다.
     const brake = stop && stop.boss && sV() >= stop.s - (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) - 0.5;
-    vehicle.state.targetSpeed = brake ? 0 : director.driveSpeed;
+    // 파(掃): pool 이 비고 살아 있는 놈·재배치 대기가 0 이면 쓸어버렸다 → 스탬프·보너스·3초 질주 → 2초 뒤 다음 파(+12, 구역 cap 배)
+    const W = director.wave; W.sprintT -= dt;
+    // 보스 정차 60 m 앞부터는 새 파를 열지 않고, 제동이 시작되면 남은 소환도 끊는다 — 서는 마차에 99 마리가 한꺼번에 붙어 보스 앞에서 장갑 100→32(실측)
+    const nearBoss = stop && stop.boss && sV() > stop.s - 60;
+    if (brake) horde.pool = 0;
+    if (!W.active) { W.calmT -= dt; if (W.calmT <= 0 && !nearBoss) startWave(time); }
+    else if (horde.pool <= 0 && horde.stats.alive === 0 && horde.stats.pending === 0) clearWave(time);
+    // 꼬리 광란: 소환이 끝나고 20% 이하(또는 6 마리)만 남으면 남은 놈들이 1.8배로 미쳐 달려온다 — 처지는 꼬리를 위협 한 방으로 바꿔 파를 끝낸다
+    const tail = W.active && horde.pool <= 0 && horde.stats.alive <= Math.max(6, W.size * 0.2);
+    horde.speedMul = (director.district?.speed ?? 1.15) * (tail ? 1.8 : 1);
+    vehicle.state.targetSpeed = brake ? 0 : (W.sprintT > 0 ? 6.5 : director.driveSpeed);
     if (stop && stop.boss && vehicle.state.speed < 0.05 && sV() < stop.s && sV() >= stop.s - 6) vehicle.state.s = stop.s;
     const d = districtAt(sV());
     if (d !== director.district) { director.district = d; applyDistrict(d); juice.banner(S.place(d.name), 2600); }   // GO(0.9초) 뒤에 첫 구역 이름이 뜬다
@@ -510,6 +541,7 @@ function updateDirector(dt, time) {
   } else vehicle.state.targetSpeed = 0;
 
   vehicle.update(dt); facing.a = facing.rel + vehicle.state.heading;
+  { const f = path.fwd(sV(), tmpV); const back = facing.chase ? 5 : -4; horde.seek.x = vpos.x - f.x * back; horde.seek.z = vpos.z - f.z * back; }   // 추격엔 마차 뒤 5 m 를 쫓는다 — 덤벼드는 자리가 화면(길 가운데 아래)에 들어온다
   // 들이받기: 정면 쐐기 구역의 좀비는 날아가고, 차선 위 소품은 부서진다
   if (vehicle.state.speed > 2) {
     director.ramming = true;
@@ -525,6 +557,20 @@ function updateDirector(dt, time) {
   ground.update(vpos.x, vpos.z);
 }
 
+// 덤벼들기 경고(2026-09-03): 붉게 웅크린 놈 위에 HUD 링 — 마차 바로 뒤(로켓 포드 뒤·화면 아래)에 있어도 보인다. 줄어드는 링 = 남은 시간. 화면 밖이면 가장자리에 붙인다.
+const WARN_N = 6, warnEls = [], warnV = new THREE.Vector3();
+for (let i = 0; i < WARN_N; i++) { const el = document.createElement('i'); el.className = 'warn'; hud.appendChild(el); warnEls.push(el); }
+function updateWarns(time) {
+  let n = 0;
+  if (game.started && !game.over && game.cont <= 0) for (let i = 0; i < horde.N && n < WARN_N; i++) {
+    if (!horde.alive[i] || !horde.wind[i]) continue;
+    warnV.set(horde.px[i], horde.py[i] + 1.1 * horde.scale[i], horde.pz[i]).project(camera); if (warnV.z > 1) continue;
+    const x = THREE.MathUtils.clamp((warnV.x + 1) / 2 * innerWidth, 24, innerWidth - 24), y = THREE.MathUtils.clamp((1 - warnV.y) / 2 * innerHeight, 24, innerHeight - 24);
+    const k = THREE.MathUtils.clamp((time - horde.wind[i]) / 1.4, 0, 1), el = warnEls[n++];
+    el.style.transform = `translate(${x.toFixed(0)}px,${y.toFixed(0)}px) translate(-50%,-50%) scale(${(1.7 - 1.0 * k).toFixed(2)})`; el.style.opacity = '1';
+  }
+  for (let j = n; j < WARN_N; j++) warnEls[j].style.opacity = '0';
+}
 const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont');
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
 window.__kb = { path, cam, cull, cullBuildings, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, skills, juice, fps: 0 };
@@ -596,7 +642,7 @@ renderer.setAnimationLoop((now) => {
     skills.update(0, time);
     vehicle.update(0);   // dt 0 — 카드 선택 중 drive 의 목표 속도(5 m/s)가 남아 있어 마차가 1.2초에 6 m 굴러갔다(실측 -150.1→-157.6)
   }
-  updateCamera(dt, rawDt);
+  updateCamera(dt, rawDt); updateWarns(time);
   rain.update(rawDt, camera.position); roadside.update(performance.now() / 1000);   // 타이틀·정지 중에도 비·바람은 움직인다
   cine.update(rawDt);
 
@@ -650,7 +696,8 @@ renderer.setAnimationLoop((now) => {
   if (game.started) {
     const stop = ROUTE.stops[director.stopIdx];
     if (director.phase === 'boss') { waveEl.classList.add('stop'); waveN.textContent = 'BOSS'; waveL.textContent = S.place(stop?.name ?? ''); }
-    else { waveEl.classList.remove('stop'); waveN.textContent = `${Math.max(0, Math.round(ROUTE.end - sV()))} m`; waveL.textContent = director.phase === 'dawn' ? S.dawn : S.toPalace; }
+    else if (director.phase === 'dawn') { waveEl.classList.remove('stop'); waveN.textContent = `${Math.max(0, Math.round(ROUTE.end - sV()))} m`; waveL.textContent = S.dawn; }
+    else { const W = director.wave; waveEl.classList.remove('stop'); waveN.textContent = W.active ? String(Math.max(0, horde.pool) + horde.stats.alive) : '掃'; waveL.textContent = `${S.wave(W.n)} · ${S.toPalace} ${Math.max(0, Math.round(ROUTE.end - sV()))} m`; }
   }
 });
 

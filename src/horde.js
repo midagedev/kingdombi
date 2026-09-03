@@ -84,6 +84,8 @@ const ANIM_GLSL = /* glsl */`
   attribute float iType;    // 0 보통 1 거대 2 폭탄 3 질주
   attribute vec2 iHitInfo;  // 마지막 피격: x = 좌우(−1..1, 모델 기준) · y = 높이(0..2 m)
   attribute float iGone;    // 잃은 뼈 비트마스크(2 머리 · 3/5 왼팔 · 4/6 오른팔)
+  attribute float iWind;    // 덤벼들기 웅크림 시작 시각(0 = 아님) — 붉게 웅크리다 튄다(2026-09-03 掃 루프)
+  varying float vWind;
   uniform float uTime; uniform float uDead;
   float goneBit(float bone) { return step(1.0, mod(floor(iGone / pow(2.0, bone)), 2.0)); }   // 2의 거듭제곱 나눗셈은 float 에서 정확 — 반올림을 넣으면 아래 비트가 위로 샌다
   vec3 bonePivot(float bone) { if (bone == 2.0) return vec3(0.0, 1.58, 0.0); if (bone == 3.0 || bone == 5.0) return vec3(-0.27, 1.54, 0.0); return vec3(0.27, 1.54, 0.0); }
@@ -128,6 +130,13 @@ const ANIM_GLSL = /* glsl */`
     float fl = exp(-(uTime - iHit) * 9.0);
     if (bone >= 1.0 && bone <= 6.0) { p = rotX(p, vec3(0.0, 1.05, 0.0), -0.5 * fl); p = rotZ(p, vec3(0.0, 1.05, 0.0), iHitInfo.x * 0.5 * fl); }
     if (bone == 2.0) p = rotX(p, vec3(0.0, 1.58, 0.0), -0.9 * fl * smoothstep(1.35, 1.6, iHitInfo.y));
+    // 덤벼들기(2026-09-03): 웅크림 0→1 동안 상체를 더 굽히고 팔을 머리 위로, 무릎을 굽혀 낮아진 뒤 마지막에 앞(+z)으로 튄다 — 0.8초 텔
+    float w = iWind > 0.0 ? clamp((uTime - iWind) * 0.72, 0.0, 1.0) : 0.0;
+    if (w > 0.0) {
+      if (bone >= 3.0 && bone <= 6.0) p = rotX(p, vec3(0.0, 1.54, 0.0), -1.3 * w);
+      if (bone >= 1.0 && bone <= 6.0) p = rotX(p, vec3(0.0, 1.05, 0.0), 0.45 * w);
+      p.y -= 0.22 * w; p.z += 0.45 * w * w * w;
+    }
     // 골반 바운스
     p.y += abs(sin(t)) * 0.07 - 0.05;
     return p;
@@ -153,6 +162,7 @@ const ANIM_GLSL = /* glsl */`
 const BODY_VERT = ANIM_GLSL + /* glsl */`
   void main() {
     vBone = aBone; vHit = iHit; vType = iType; vMark = aimMark();
+    vWind = (iWind > 0.0 && uDead < 0.5) ? clamp((uTime - iWind) * 0.72, 0.0, 1.0) : 0.0;
     vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
     if (aBone >= 2.0 && aBone <= 6.0) p = mix(p, uDead > 0.5 ? bonePivot(aBone) - vec3(0.0, 0.9, 0.0) : bonePivot(aBone), goneBit(aBone));   // 잃은 사지는 관절점으로 접혀 사라진다
     float shred = exp(-(uTime - iHit) * 16.0) * (1.0 - uDead);
@@ -185,10 +195,12 @@ const BODY_FRAG = /* glsl */`
 const GLOW_FRAG = /* glsl */`
   precision highp float;
   uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark; varying float vWind;
   void main() {
     float g = 0.0;
     vec3 col = uColor;
+    // 덤벼들기 텔: 온몸이 붉게 달아오르며 점점 빠르게 박동 — '지금 저놈을 쏘라'
+    if (vWind > 0.0) { col = mix(col, uBlood, 0.85 * vWind); g += vWind * (0.7 + 0.5 * sin(uTime * (10.0 + 30.0 * vWind))); }
     float camD = length(cameraPosition - vWorld);
     float eyeR = vType == 1.0 ? 0.085 : 0.06;
     if (vBone == 2.0) {
@@ -242,8 +254,9 @@ export function createHorde(scene, physics, {
   iHit.setUsage(THREE.DynamicDrawUsage);
   const iType = new THREE.InstancedBufferAttribute(new Float32Array(N), 1);
   const iHitInfo = new THREE.InstancedBufferAttribute(new Float32Array(N * 2), 2); iHitInfo.setUsage(THREE.DynamicDrawUsage);
+  const iWind = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iWind.setUsage(THREE.DynamicDrawUsage);
   const iGone = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iGone.setUsage(THREE.DynamicDrawUsage);
-  geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone);
+  geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone); geo.setAttribute('iWind', iWind);
 
   const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
   const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms, side: THREE.DoubleSide });   // 옷·머리카락 판(양면)
@@ -268,7 +281,7 @@ export function createHorde(scene, physics, {
   const cType = new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1); cType.setUsage(THREE.DynamicDrawUsage);
   corpseGeo.setAttribute('iType', cType);
   const cGone = new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1); cGone.setUsage(THREE.DynamicDrawUsage);
-  corpseGeo.setAttribute('iGone', cGone); corpseGeo.setAttribute('iHitInfo', new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL * 2), 2));
+  corpseGeo.setAttribute('iGone', cGone); corpseGeo.setAttribute('iHitInfo', new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL * 2), 2)); corpseGeo.setAttribute('iWind', new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1));
   const corpseBodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms: deadUniforms, side: THREE.DoubleSide });
   const corpseGlowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms: deadUniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
   const corpseDepthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms: deadUniforms, side: THREE.DoubleSide });
@@ -287,22 +300,23 @@ export function createHorde(scene, physics, {
   const type = new Uint8Array(N);
   // 0 보통 · 1 거대(느리고 단단, 도달 시 큰 피해) · 2 폭탄(죽으면 폭발) · 3 질주(작고 빠름)
   const TYPES = [
-    { speed: [3.6, 5.2], hp: [3, 5], scale: [0.9, 1.12], reachDmg: 1.0 },      // reachDmg = 포대 앞에서 1초마다 주는 피해
-    { speed: [2.0, 2.6], hp: [42, 55], scale: [2.0, 2.3], reachDmg: 8 },
-    { speed: [3.2, 4.2], hp: [3, 4], scale: [1.0, 1.15], reachDmg: 6 },       // 폭탄: 도달 즉시 폭발(1회)
-    { speed: [6.5, 8.0], hp: [1.5, 2.5], scale: [0.72, 0.85], reachDmg: 0.7 },
+    { speed: [3.6, 5.2], hp: [3, 5], scale: [0.9, 1.12], wind: 1.4, strike: 6 },       // wind = 도달 뒤 붉게 웅크리는 시간(초) · strike = 덤벼들어 주는 피해(한 번, 그리고 꿰여 죽는다)
+    { speed: [2.0, 2.6], hp: [42, 55], scale: [2.0, 2.3], wind: 1.8, strike: 15 },
+    { speed: [3.2, 4.2], hp: [3, 4], scale: [1.0, 1.15], wind: 1.2, strike: 0 },      // 폭탄: 웅크린 뒤 폭발(피해는 폭발이 준다)
+    { speed: [6.5, 8.0], hp: [1.5, 2.5], scale: [0.72, 0.85], wind: 1.0, strike: 4 },
   ];
   const mix = { brute: 0.035, bomber: 0.085, runner: 0.16 };   // 정차 지점마다 연출자가 바꾼다
   const rollType = () => { const r = Math.random(); return r < mix.brute ? 1 : r < mix.brute + mix.bomber ? 2 : r < mix.brute + mix.bomber + mix.runner ? 3 : 0; };
   const respawnAt = new Float32Array(N);
-  const attackT = new Float32Array(N);   // 포대 앞 공격 타이머
-  const latched = new Float32Array(N);   // 마차에 붙어 있은 시간 — 가시에 꿰여 IMPALE 초 뒤 죽는다(붙은 놈은 두 번 긁고 끝)
-  const IMPALE = [2.2, 4.0, 2.2, 2.2];
+  // 덤벼들기(2026-09-03 掃 루프): 1/초 누수 대신 사건. 도달 → wind 초 붉게 웅크림(텔) → 피해 한 번 → 가시에 꿰여 죽는다. 웅크린 채 죽이면 cause 'save'.
+  const wind = new Float32Array(N);      // 웅크림 시작 시각(0 = 아님)
+  const relocate = new Uint8Array(N);    // 낙오 재배치 대기(파 소환 수 pool 을 쓰지 않는다)
+  let spawnAcc = 0;
   const stagger = new Float32Array(N);   // 피격 경직(초)
   const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
-  const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0, impaled: 0 };
-  const hooks = { onExplode: null, onKill: null, onLand: null, onLimb: null };
+  const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0, impaled: 0, pending: 0 };
+  const hooks = { onExplode: null, onKill: null, onLand: null, onLimb: null, onStrike: null };
   const gone = new Uint8Array(N);        // 잃은 뼈 비트마스크(셰이더 iGone 과 같은 값)
 
   function reset(i, time) {
@@ -315,7 +329,7 @@ export function createHorde(scene, physics, {
     hp[i] = THREE.MathUtils.lerp(T.hp[0], T.hp[1], Math.random());
     speed[i] = THREE.MathUtils.lerp(T.speed[0], T.speed[1], Math.random());   // 킹덤 좀비는 빠르다
     scale[i] = THREE.MathUtils.lerp(T.scale[0], T.scale[1], Math.random());
-    alive[i] = 1; latched[i] = 0; gone[i] = 0; iGone.setX(i, 0);
+    alive[i] = 1; wind[i] = 0; iWind.setX(i, 0); gone[i] = 0; iGone.setX(i, 0);
     iPhase.setX(i, Math.random()); iSpeed.setX(i, speed[i] / (8 * scale[i])); iType.setX(i, ty);
     iSpeed.needsUpdate = true; iType.needsUpdate = true;
     respawnAt[i] = 0;
@@ -348,21 +362,24 @@ export function createHorde(scene, physics, {
     cellHead.fill(-1);
     for (let i = 0; i < N; i++) { if (!alive[i]) continue; const c = cellOf(px[i], pz[i]); next[i] = cellHead[c]; cellHead[c] = i; }
 
-    let aliveCount = 0, revived = 0;
-    const tx = target.x, tz = target.z;
+    let aliveCount = 0, revived = 0, pending = 0;
+    spawnAcc = Math.min(12, spawnAcc + dt * H.spawnRate);   // 파 소환은 초당 spawnRate — 쏟아지되 한 프레임에 다 나오지 않는다
+    const tx = H.seek.x, tz = H.seek.z;   // 쫓는 점: main 이 매 프레임 넣는다(추격엔 마차 뒤 5 m — 옆구리가 아니라 꼬리에 붙어 화면 안에서 덤벼든다)
     // 표적(마차)이 달아나는 속도. 추격전에서 도달한 놈이 그냥 멈추면 마차가 그대로 빠져나가
     // 영원히 아무도 닿지 못한다 — 속도를 맞춰 따라붙어야 물고 늘어진다.
     const hold = H.chase ? rail.speed : 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) {
         // 보스전엔 budget 만큼만 되살린다 — 떼를 얇게 깔아 보스에 집중시킨다
-        if (respawnAt[i] && time > respawnAt[i] && stats.alive + revived < H.budget) { reset(i, time); revived++; }
-        else { m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+        // 재배치(relocate)는 파 소환 수를 쓰지 않는다. 새 소환은 pool 이 남아 있고 페이스(spawnAcc)가 허락할 때만.
+        if (respawnAt[i] && time > respawnAt[i] && stats.alive + revived < H.budget && (relocate[i] || (H.pool > 0 && spawnAcc >= 1))) { if (!relocate[i]) { H.pool--; spawnAcc--; } relocate[i] = 0; reset(i, time); revived++; }
+        else { if (relocate[i]) pending++; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       }
       // 낙오: 조준 범위 밖으로 벗어난 놈은 조용히 재배치한다(시체 없이) — 떼는 항상 총구 쪽에 있어야 한다
       // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
       const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
-      if (H.chase ? (dzt > 95 || dzt < -25) : (dzt > 45)) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+      // 추격 낙오 62 m(전 95): 못 따라오는 놈이 파를 끝내지 못하게 붙잡는다 — 재배치돼 14~55 m 뒤에서 다시 온다
+      if (H.chase ? (dzt > 62 || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // 지붕 위·낙하 중(2026-09-03): seek·분리·회피 없이 제 갈 길만 간다. 지붕 위에선 마차 쪽으로 기어가며 용마루(top−0.5)→처마(top·0.55) 로 내려오고, AABB(처마선) 를 넘으면 살짝 뛰어 떨어진다.
       let air = false; const rb = roofB[i];
@@ -427,15 +444,17 @@ export function createHorde(scene, physics, {
       if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
         // 추격전엔 마차 속도만큼만 따라 달린다 — 붙어서 긁되 파고들지는 않는다. 느린 놈은 못 따라와 처진다.
         if (hold > 0.2) { const h = Math.min(sp, hold); vx[i] = dx * h; vz[i] = dz * h; } else { vx[i] *= 0.2; vz[i] *= 0.2; }
-        if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
-        attackT[i] += dt; latched[i] += dt;
-        if (latched[i] > IMPALE[type[i]] * H.impaleMul) {   // 꿰인 놈은 마차 프레임에서 옆(sx)·앞(0.2)으로 튄다 — θ=0 이면 옛 (sx*0.9, -0.2)
+        if (wind[i] === 0) { wind[i] = time; iWind.setX(i, time); }   // 웅크림 시작 — 셰이더가 붉게 달아오르며 몸을 낮춘다
+        else if (time - wind[i] > TYPES[type[i]].wind * H.windMul) {
+          stats.reached++;
+          if (type[i] === 2) { kill(i, 0, 1, time, 4); continue; }   // 폭탄: 터진다(피해는 onExplode 가 거리로 준다)
+          stats.reachDamage += TYPES[type[i]].strike * H.impaleMul * H.strikeMul; hooks.onStrike?.(px[i], pz[i], type[i], time);
+          // 덤벼든 놈은 가시에 꿰여 마차 프레임에서 옆(sx)·앞(0.2)으로 튄다 — 점수 없음(cause 'strike')
           const th = rail.heading, fx = -Math.sin(th), fz = -Math.cos(th), rx = Math.cos(th), rz = -Math.sin(th);
           const sx = Math.sign((px[i] - tx) * rx + (pz[i] - tz) * rz || 1);
-          kill(i, sx * 0.9 * rx + 0.2 * fx, sx * 0.9 * rz + 0.2 * fz, time, 5, 'impale'); continue;
+          kill(i, sx * 0.9 * rx + 0.2 * fx, sx * 0.9 * rz + 0.2 * fz, time, 6, 'strike'); continue;
         }
-        if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
-      } else { attackT[i] = 0.6; latched[i] = Math.max(0, latched[i] - dt * 2); } // 도착 0.4초 뒤 첫 공격
+      } else if (wind[i]) { wind[i] = 0; iWind.setX(i, 0); }   // 마차가 벗어났다 — 웅크림 취소
       }
       { const ty = Math.atan2(vx[i], vz[i]); let dy = ty - yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); yaw[i] += dy * Math.min(1, dt * 10); }
       q.setFromAxisAngle(up, yaw[i]);
@@ -444,9 +463,9 @@ export function createHorde(scene, physics, {
       m.compose(p, q, s);
       body.setMatrixAt(i, m);
     }
-    stats.alive = aliveCount;
+    stats.alive = aliveCount; stats.pending = pending;
     body.instanceMatrix.needsUpdate = true;
-    iHit.needsUpdate = true; iHitInfo.needsUpdate = true; iGone.needsUpdate = true; cGone.needsUpdate = true;
+    iHit.needsUpdate = true; iHitInfo.needsUpdate = true; iWind.needsUpdate = true; iGone.needsUpdate = true; cGone.needsUpdate = true;
 
     // 시체 동기화
     for (const c of physics.corpses) {
@@ -510,7 +529,7 @@ export function createHorde(scene, physics, {
       if (!(gone[i] & bit) && Math.random() < 0.35) { gone[i] |= bit; iGone.setX(i, gone[i]); hooks.onLimb?.(hx, hy, hz, dirX, dirZ, time, 1); }
     }
     if (hp[i] > 0) { const kb = 1.0 / (scale[i] * scale[i]); /* 개틀링은 밀지 않고 탄막 안에 붙잡는다(경직이 발을 묶음) */ vx[i] -= dirX * kb; vz[i] -= dirZ * kb; stagger[i] = Math.max(stagger[i], 0.45 / scale[i]); return false; }
-    kill(i, dirX, dirZ, time, force);
+    kill(i, dirX, dirZ, time, force, wind[i] > 0 ? 'save' : null);   // 웅크린 놈을 제때 죽였다 — main 이 斬 보상
     return true;
   }
   function kill(i, dirX, dirZ, time, force = 9, cause = null) {
@@ -574,17 +593,20 @@ export function createHorde(scene, physics, {
   // 앞뒤 전환 순간, 반대편에 남은 놈들을 조용히 치운다(시체 없이) — 조준 범위 밖에서 장갑을 갉는 걸 막는다.
   // sign +1 = 마차 뒤(s 작은 쪽), -1 = 마차 앞.
   function recycleSide(sign, time) {
-    for (let i = 0; i < N; i++) { if (!alive[i]) continue; if ((rail.s - alongS(px[i], pz[i])) * sign > 0) { alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.8; } }
+    for (let i = 0; i < N; i++) { if (!alive[i]) continue; if ((rail.s - alongS(px[i], pz[i])) * sign > 0) { alive[i] = 0; relocate[i] = 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.8; } }
   }
 
   // 정원(budget)까지 즉시 줄인다 — 먼 놈부터 조용히 치운다(보스 등장 섬광에 가려 사라진다).
   function trimTo(n, time) {
+    for (let i = 0; i < N; i++) if (!alive[i] && relocate[i]) { relocate[i] = 0; respawnAt[i] = 0; }   // 재배치 대기도 버린다 — 코인 직후 타이틀 낙오자들이 pool 을 우회해 되돌아와 출발 전에 덤벼들었다(실측 −13)
     let live = []; for (let i = 0; i < N; i++) if (alive[i]) live.push(i);
     if (live.length <= n) return;
     live.sort((a, b) => (Math.hypot(px[b] - target.x, pz[b] - target.z) - Math.hypot(px[a] - target.x, pz[a] - target.z)));
-    for (let k = 0; k < live.length - n; k++) { const i = live[k]; alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 1 + Math.random() * 3; }
+    for (let k = 0; k < live.length - n; k++) { const i = live[k]; alive[i] = 0; relocate[i] = 0; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = 0; }   // 되돌아오지 않는다(파 pool 로만 다시 나온다) — 재배치로 두면 1파가 타이틀 떼 270 이 됐다
   }
 
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, rail, hooks, px, pz, py, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
+  // 파 시작: 앞으로 n 마리를 소환할 수 있다(pool). 죽어 있는 슬롯은 곧바로 나올 수 있게 예약 시각을 당긴다. 재배치 대기는 그대로.
+  function startWave(n, time) { H.pool = n; for (let i = 0; i < N; i++) if (!alive[i] && !relocate[i]) respawnAt[i] = time + Math.random() * 0.4; }
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
   return H;
 }

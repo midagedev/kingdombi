@@ -100,7 +100,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
   // ── 조준점: 바닥 링(조준 광선이 닿는 자리) + 잠금 링(좀비·보스 접점). 스팟 레이어, 깊이 무시 — 떼 뒤에서도 보인다 ──
   // 조준 링·잠금 링은 뺐다(2026-09-03 3차): 광선이 좀비 몸통 1 m 안을 지나면 링이 바닥에서 몸으로 뛰며 붉어져 자동조준으로 읽혔다. 대신 2D 조준점(DOM, setReticle) — 포신 방향을 1:1 로 따르고 어디에도 붙지 않는다.
-  let reticle = null; const setReticle = (el) => { reticle = el; };
+  let reticle = null, retO = null; const setReticle = (el) => { reticle = el; retO = el.querySelector('.o'); };
 
   // ── 상태 ──
   const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1, cur: { x: -1, y: 0 }, follow: true, heading: 0,
@@ -257,7 +257,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 2D 조준점 = 화면 커서(state.cur) 그 자리. 포신에서 투영하지 않는다 — 투영하면 반동 떨림·카메라 흔들림·카메라 추종이 전부 조준선에 실려 "제멋대로 움직이는" 것으로 읽혔다(2026-09-03).
     if (reticle) {
       reticle.style.opacity = state.showAim ? '1' : '0';
-      reticle.classList.toggle('fire', state.firing && state.spin > 0.55); reticle.classList.toggle('hit', time - state.lastHit < 0.07);
+      reticle.classList.toggle('fire', state.firing && state.spin > 0.55); reticle.classList.toggle('hit', time - state.lastHit < 0.07); reticle.classList.toggle('jam', state.jammed > 0);
+      // 바깥 원 색 = 열: 잉크(쉼)·호박(사격) → 붉게. 붉어지면 손을 떼라
+      if (retO) { const h = THREE.MathUtils.smoothstep(state.heat, 0.35, 1), f = state.firing && state.spin > 0.55; const r = f ? 255 : 233, g = (f ? 179 : 230) * (1 - h) + 40 * h, b = (f ? 71 : 223) * (1 - h) + 40 * h; retO.style.stroke = state.jammed > 0 ? '' : `rgb(${r | 0},${g | 0},${b | 0})`; }
       reticle.style.transform = `translate(${state.cur.x.toFixed(1)}px, ${state.cur.y.toFixed(1)}px) translate(-50%, -50%)`;
       const D = `${(ringPx() * 2.5).toFixed(0)}px`; if (reticle.style.width !== D) reticle.style.width = reticle.style.height = D;   // 바깥 원(viewBox r 40/100) = 명중 반지름. 링이 곧 피탄 영역이다
     }
@@ -338,11 +340,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
     // 탄피: 약실 오른쪽으로 한 발에 하나(스팟 레이어 놋쇠 — 총이 돌아간다는 리듬이 눈에 보인다)
     if (fx.brass) { pitchPivot.getWorldQuaternion(_q); _s.set(1, 0, 0).applyQuaternion(_q); _mid.set(0.26, 0.3, 0.22); pitchPivot.localToWorld(_mid); fx.brass.burst(_mid.x, _mid.y, _mid.z, 1, { dirX: _s.x * 0.7, dirY: 0.7, dirZ: _s.z * 0.7, spread: 0.25, power: 3.2, scale: 1, time }); }
-    state.heat = Math.min(1, state.heat + 0.0045);
     state.recoil = Math.min(1, state.recoil + 0.35);
     look.state.flash = Math.min(0.08, look.state.flash + 0.02);   // 화면 전체 번쩍임은 낮게 — 총구 불빛은 총구에 있어야 한다
     audio.shot();
-    // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
   function update(dt, time, rawDt = dt) {
@@ -359,7 +359,10 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       let n = 0;
       while (fireAcc >= 1 && n < 4) { fireAcc -= 1; fireOne(time); n++; }
     } else fireAcc = 0;
-    state.heat = Math.max(0, state.heat - dt * (state.jammed > 0 ? 0.42 : 0.09));
+    // 과열(2026-09-03 掃 루프): 6초 연사 → 1.6초 잠금(증기·링 회색). 쉬면 2.2초에 식는다. '언제 손을 떼나'가 이 총의 유일한 결정이다.
+    if (state.firing && state.spin > 0.55 && state.jammed <= 0) { state.heat = Math.min(1, state.heat + dt / 6); if (state.heat >= 1) { state.jammed = 1.6; audio.overheat(); } }
+    else state.heat = Math.max(0, state.heat - dt / (state.jammed > 0 ? 1.6 : 2.2));
+    if (state.jammed > 0 && fx.mist && Math.random() < dt * 14) { muzzle.getWorldPosition(_o); fx.mist.puff(_o.x, _o.y + 0.1, _o.z, 1, 0, 0, time); }
     // 총열 과열색: 검정→진홍→주황빛
     const h = state.heat;
     barrelHot.color.setRGB(Math.pow(h, 1.6) * 1.2, Math.pow(h, 3.5) * 0.45, Math.pow(h, 6) * 0.15);
