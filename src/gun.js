@@ -23,6 +23,7 @@ function makeFlashTexture() {
   const t = new THREE.CanvasTexture(c); return t;
 }
 
+const AIM_SPEED = +(new URLSearchParams(location.search).get('aimv') ?? 1.8);   // 스틱 끝까지 밀 때 초당 화면 몇 개를 가로지르나(?aimv=)
 export function createGun(scene, physics, horde, buildings, fx, audio, look, { parent = scene, onCollapse, camera = null }) {
   // ── 모델: 포좌(parent = 마차 mount) 위 받침 기둥 + 6열 개틀링 ──
   const root = new THREE.Group(); parent.add(root);
@@ -323,8 +324,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const c = state.cur;
     if (c.x < 0 || !state.live) { c.x = innerWidth / 2; c.y = innerHeight / 2; }   // 시작·앞뒤 전환·CONTINUE 뒤엔 가운데서 다시
     if (sx || sy) {
-      const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
-      const v = Math.max(innerWidth, innerHeight) * 0.85 * rawDt;
+      // 2026-09-03 재조정: 끝까지 밀면 0.55초에 화면을 가로지른다(전 1.2초), 데드존 0.08, 곡선은 거의 선형(전엔 반만 밀면 1/5 속도라 '내 맘대로 안 간다'였다)
+      const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.08) / 0.92; return Math.sign(v) * (d * d * 0.35 + d * 0.65); };
+      const v = Math.max(innerWidth, innerHeight) * AIM_SPEED * rawDt;
       c.x = THREE.MathUtils.clamp(c.x + curve(sx) * v, 0, innerWidth); c.y = THREE.MathUtils.clamp(c.y + curve(sy) * v, 0, innerHeight);
     }
     if (state.live && state.follow) aimAtScreen(c.x, c.y, 1 - Math.exp(-rawDt * 14));   // follow=false: 데모 자동조준이 yaw/pitch 를 직접 쓴다

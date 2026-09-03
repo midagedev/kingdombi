@@ -393,11 +393,12 @@ function updateCamera(dt, rawDt = dt) {
     sky.update(camera.position, game.time, renderer.getPixelRatio());
     return;
   }
-  const k = director.phase === 'ready' ? 2.2 : 9;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업
+  const k = director.phase === 'ready' ? 2.2 : 16;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업. 게임 중 16: 카메라가 커서 뒤를 오래 흐르지 않게(전 9)
   const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
   // 카메라는 포신이 아니라 **커서**를 따른다(2026-09-03). 조준선이 화면에 고정된 구조에서 카메라가 포신을 보면 커서→포신→카메라→커서 되먹임으로 포신이 끝까지 돌아갔다(실측 NDC 0.72 커서에 yaw −1.28).
-  const cur = gun.state.cur, cx = gun.state.follow ? -(cur.x / innerWidth * 2 - 1) * 0.5 : gun.state.yaw, cy = gun.state.follow ? (1 - cur.y / innerHeight * 2) * 0.15 : Math.sin(gun.state.pitch) * 0.6;
+  // 커서 추종 진폭(2026-09-03 재조정 0.5/0.15 → 0.22/0.06): 커서를 밀면 카메라가 함께 돌아 조준점 아래 세계가 미끄러지고, 손을 떼도 카메라가 0.3초 더 흘러 '조준점이 제멋대로'로 느껴졌다
+  const cur = gun.state.cur, cx = gun.state.follow ? -(cur.x / innerWidth * 2 - 1) * 0.22 : gun.state.yaw, cy = gun.state.follow ? (1 - cur.y / innerHeight * 2) * 0.06 : Math.sin(gun.state.pitch) * 0.6;
   const yaw = cx * 0.6;
   // 조준 추종은 옆으로 1.8m 만 미끄러진다(궤도가 아니다 — 조준할 때마다 카메라가 돌면 멀미난다).
   // 앞뒤 전환은 그 '완성된 오프셋'을 통째로 y축 회전시킨다. 식 안에 각을 더하면 중간(π/2)에서 반경이 무너져 마차로 줌인된다.
