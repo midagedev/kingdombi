@@ -2,7 +2,7 @@
 // 키 = `s:<day>:<4000000-score 7자리>:<rand>` → KV list 는 키 오름차순이라 점수 내림차순으로 나온다. 값은 metadata 에만(list 한 번으로 끝).
 // 부정 방지는 없다(클라이언트 점수). 상한·이름 정제·IP 분당 횟수만 자른다 — 아케이드 순위표는 원래 그 정도였다.
 const MAX_SCORE = 4_000_000;
-const ORIGINS = ['https://midagedev.github.io', 'http://localhost:4400', 'http://127.0.0.1:4400'];
+const ORIGINS = ['https://kingdombi.midagedev.com', 'https://midagedev.github.io', 'http://localhost:4400', 'http://127.0.0.1:4400'];
 const TOP = 20;
 
 function cors(req) {

@@ -106,6 +106,13 @@
 - 실광원 4개 상한: 거리 등롱 2(마차를 앞질러 개구리 뛰기) + 총구 + 화재 1.
 - 폰 실측은 아직 없다. WebGPU 전환은 커스텀 GLSL(좀비·컴포짓) 전부를 TSL 로 다시 써야 해서 지금 이득이 작다 — 드로우콜을 먼저 줄였고, 폰 측정 후 판단. 미리 굽은 GLB 는 생성 시간(1초)이 문제가 아니라 필요 없다 — 병목은 재질 수였다.
 
+## 배포·도메인·SEO·통계 (2026-09-03)
+
+- 주소: **https://kingdombi.midagedev.com/** — Cloudflare DNS(midagedev.com 존)에 `kingdombi` CNAME → `midagedev.github.io`(DNS only, 프록시 없음 — GitHub 가 인증서를 직접 발급). GitHub Pages 커스텀 도메인은 API 로 설정, `public/CNAME` 도 둔다. 옛 `midagedev.github.io/kingdombi/` 는 GitHub 가 301 로 보낸다. Vite `base:'./'` 라 루트 배포에도 그대로.
+- SEO: `index.html` 에 title/description/canonical, Open Graph + Twitter summary_large_image(`/og.jpg` 1200×630 — 궁궐 앞 恐龍 머리, Playwright `?demo=1&god=1&boss=rex&nofire=1` 로 촬영), schema.org VideoGame JSON-LD, `robots.txt`, `sitemap.xml`. 공유 문구·전적 카드 URL 도 새 도메인.
+- Web Analytics: Cloudflare Web Analytics 비콘(무료, 쿠키 없음). 사이트 `kingdombi.midagedev.com`(site_tag 7e588452…, RUM API 로 등록). 로컬(localhost)에선 비콘을 넣지 않는다(CORS 소음). 대시보드 → Analytics & Logs → Web Analytics.
+- 순위표 Worker CORS 에 새 오리진 추가.
+
 ## 스택
 
 Web Analytics: Cloudflare Web Analytics 비콘(`index.html`, 사이트 `midagedev.github.io`, site_tag 7e588452…). 대시보드 → Analytics & Logs → Web Analytics. 순위표 Worker 와 같은 계정(midagedev@gmail.com).

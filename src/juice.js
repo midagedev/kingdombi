@@ -107,7 +107,7 @@ export function createJuice(hud) {
       `처치 ${st.kills} · 최고 연쇄 ${st.maxCombo} · 명중률 ${Math.round(st.accuracy * 100)}% · 집 ${st.razed}채 붕괴`,
       pips ? '🩸'.repeat(pips) : '🌑 흑백의 밤',
       '',
-      '너는 궁궐까지 갈 수 있나 → https://midagedev.github.io/kingdombi/  by @midagedev',
+      '너는 궁궐까지 갈 수 있나 → https://kingdombi.midagedev.com/  by @midagedev',
     ].join('\n');
   }
   async function copy(text) {
@@ -136,7 +136,7 @@ export function createJuice(hud) {
     g.fillStyle = 'rgba(233,230,223,.7)'; g.font = `300 ${px(0.03)}px "IBM Plex Mono", ui-monospace, monospace`;
     g.fillText(`처치 ${st.kills}   연쇄 ${st.maxCombo}   명중 ${Math.round(st.accuracy * 100)}%   ${fmt(st.time)}`, px(0.06), c.height - H + px(0.19));
     g.fillStyle = 'rgba(233,230,223,.4)';
-    g.fillText('midagedev.github.io/kingdombi', px(0.06), c.height - H + px(0.235));
+    g.fillText('kingdombi.midagedev.com', px(0.06), c.height - H + px(0.235));
     const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
     const file = new File([blob], 'kingdombi.png', { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], text: '킹덤비' }); return '공유했다'; } catch (e) { if (e?.name === 'AbortError') return '취소'; } }
