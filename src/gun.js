@@ -95,7 +95,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
   // ── 상태 ──
   const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
-    aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
+    aim: { x: 0, y: 0, z: 0, t: 0, block: 0, g: 40, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
   const hooks = { onBodyHit: null, onBlast: null, onBombKey: null };
@@ -194,7 +194,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (ph && ph.timeOfImpact < block) { block = ph.timeOfImpact; kind = 'ground'; }
     let t = block;
     if (zt < block) { t = zt; kind = 'zombie'; }
-    a.t = t; a.block = block; a.kind = kind;
+    a.t = t; a.block = block; a.kind = kind; a.g = _d.y < -1e-3 ? Math.min(MAX, -_o.y / _d.y) : MAX;
     a.x = _o.x + _d.x * t; a.y = _o.y + _d.y * t; a.z = _o.z + _d.z * t;
     const u = horde.uniforms; if (u.uAimO) { u.uAimO.value.copy(_o); u.uAimD.value.copy(_d); u.uAimT.value = state.showAim ? block : -1; }
     // 링: 바닥(접점의 x,z). 하늘을 겨누면 숨김. 잠금 링: 좀비·보스 접점에만.
@@ -282,7 +282,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
-  const aimDist = () => THREE.MathUtils.clamp(state.aim.kind === 'none' ? 40 : state.aim.t, 6, 60);
+  // 감도 기준 거리 = 포신 기울기가 가리키는 바닥까지의 거리(aim.g). 첫 접점(aim.t)을 쓰면 링이 7 m 좀비를 지날 때마다 회전이 3배 요동해 자동조준처럼 느껴졌다(2026-09-03 실측 1.0↔3.0 rad/s).
+  const aimDist = () => THREE.MathUtils.clamp(state.aim.g || 40, 6, 60);
   function update(dt, time, rawDt = dt) {
     // 스핀업/다운
     const want = state.firing && state.jammed <= 0 ? 1 : 0;
