@@ -21,7 +21,7 @@ const KO = {
   calm: '저자극',
   kills: '처치', armor: '장갑', toPalace: '궁궐까지', dawn: '새벽',
   wave: (n) => `${n}波`, sweep: (n, t) => `掃 — ${n} 마리 · ${t.toFixed(1)}초`, left: '남은 떼',
-  titleHint: (mobile) => mobile ? '누른 자리가 스틱 · 누른 동안 발사 · 雷 버튼' : '클릭해 조준 · 누른 동안 발사 · Space 雷',
+  titleHint: (mobile) => mobile ? '누른 곳을 쏜다 · 끌어서 조준 · 雷 버튼' : '클릭해 조준 · 누른 동안 발사 · Space 雷',
   contHint: '누르면 계속', contEnd: '그만',
   pickTitle: '보 강 — 하 나 를 고 르 라',
   cards: {
@@ -67,7 +67,7 @@ const EN = {
   calm: 'CALM',
   kills: 'KILLS', armor: 'ARMOR', toPalace: 'TO THE PALACE', dawn: 'DAWN',
   wave: (n) => `WAVE ${n}`, sweep: (n, t) => `SWEPT — ${n} · ${t.toFixed(1)}s`, left: 'LEFT',
-  titleHint: (mobile) => mobile ? 'touch = joystick · hold to fire · 雷 button' : 'click to aim · hold to fire · Space = 雷',
+  titleHint: (mobile) => mobile ? 'touch to shoot · drag to aim · 雷 button' : 'click to aim · hold to fire · Space = 雷',
   contHint: 'TAP TO CONTINUE', contEnd: 'QUIT',
   pickTitle: 'C H O O S E   O N E',
   cards: {

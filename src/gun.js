@@ -437,7 +437,11 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     state.pitch += (THREE.MathUtils.clamp(Math.atan2(dy, Math.hypot(dx, dz)), -0.62, state.pitchMax) - state.pitch) * k;
   }
   function attachInput(el, { stickEl = null, forceStick = false } = {}) {
-    let mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
+    let mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0, touchId = -1;
+    // 터치 = 라이트건(2026-09-04): 누른 곳을 쏜다, 끌면 링이 따라온다, 누르고 있는 동안 발사. 스틱(속도 제어)은 표적까지 가는 시간이 매번 들어 "조준선 맞추기가 힘들다"였다 — ?stick=1 로만 남긴다.
+    // 손가락이 표적을 가리므로 링은 손끝보다 TOUCH_LIFT 위에 뜬다(모바일 슈터 관례). 링이 곧 피탄 영역이라 정밀할 필요는 없다.
+    const TOUCH_LIFT = 64;
+    const touchCur = (e) => { state.cur.x = e.clientX; state.cur.y = Math.max(0, e.clientY - TOUCH_LIFT); };
     addEventListener('keydown', (e) => { if (e.target?.tagName === 'INPUT') return; if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Enter', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); } });
     addEventListener('keyup', (e) => keys.delete(e.code)); addEventListener('blur', () => keys.clear());
     const R = 54;
@@ -447,14 +451,15 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const moveKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
     const hideStick = () => { if (!stickEl) return; stickEl.classList.remove('on'); stickEl.classList.add('hint'); stickEl.style.cssText = ''; moveKnob(0, 0); };
     // showStick 은 left/top 인라인 — 힌트의 right/bottom 을 이기려면 right/bottom 도 auto
-    if (stickEl && (forceStick || navigator.maxTouchPoints > 0)) stickEl.classList.add('hint');
+    if (stickEl && forceStick) stickEl.classList.add('hint');
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointerdown', (e) => {
-      if (forceStick || e.pointerType === 'touch') {
+      if (forceStick) {
         if (stickId !== -1) return;
         stickId = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; state.stick.active = true; state.stick.x = 0; state.stick.y = 0; state.firingPtr = true;
         showStick(sx0, sy0); cap(e); return;
       }
+      if (e.pointerType === 'touch') { if (touchId !== -1) return; touchId = e.pointerId; state.firingPtr = true; touchCur(e); cap(e); return; }   // 두 번째 손가락(雷 버튼은 HUD 가 먹는다)은 무시
       if (e.button === 2) { hooks.onBombKey?.(); return; }
       mouseActive = true; state.firingPtr = true; cap(e); state.cur.x = e.clientX; state.cur.y = e.clientY;
     });
@@ -465,13 +470,15 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         state.stick.x = dx / R; state.stick.y = dy / R; moveKnob(dx, dy);
         return;
       }
+      if (e.pointerId === touchId) { touchCur(e); return; }
       if (forceStick || e.pointerType === 'touch' || !state.live) return;
       state.cur.x = e.clientX; state.cur.y = e.clientY;   // 마우스는 누르지 않아도 조준선이 따라온다(라이트건)
     });
     const stop = (e) => {
       if (e.pointerId === stickId) { stickId = -1; state.stick.active = false; state.stick.x = state.stick.y = 0; hideStick(); }
+      else if (e.pointerId === touchId) touchId = -1;
       else if (e.pointerType !== 'touch') mouseActive = false;
-      state.firingPtr = stickId !== -1 || mouseActive;
+      state.firingPtr = stickId !== -1 || mouseActive || touchId !== -1;
     };
     el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
   }
