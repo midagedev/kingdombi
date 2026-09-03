@@ -60,12 +60,30 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
   // 트레이서
   const TRACERS = 40;
-  const tracer = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 1), new THREE.MeshBasicMaterial({ color: 0xffc070 }), TRACERS);
+  // 머리(+z)는 백황색, 꼬리는 어두운 호박 — 상자 정점색으로 굽는다. 가산 합성이라 겹치면 더 밝다(레이저가 아니라 불꽃 줄기).
+  const tracerGeo = new THREE.BoxGeometry(0.09, 0.09, 1);
+  { const pa = tracerGeo.attributes.position, col = new Float32Array(pa.count * 3); for (let i = 0; i < pa.count; i++) { const t = pa.getZ(i) + 0.5; col[i * 3] = 0.35 + 0.65 * t; col[i * 3 + 1] = 0.12 + 0.8 * t * t; col[i * 3 + 2] = 0.02 + 0.7 * t * t * t; } tracerGeo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
+  const tracer = new THREE.InstancedMesh(tracerGeo, new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), TRACERS);
   tracer.layers.set(LAYER_SPOT); tracer.frustumCulled = false; tracer.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(tracer);
   const tracerBorn = new Float32Array(TRACERS).fill(-1e9); let tracerCursor = 0;
   // 예광탄은 탄띠에서 다섯 발에 하나. 레이저가 아니라 4.5m 짧은 불꽃 줄기가 320 m/s 로 날아가 목표에서 꺼진다.
-  const TRACER_EVERY = 5, TRACER_SPEED = 320, TRACER_LEN = 4.5;
+  const TRACER_EVERY = 3, TRACER_SPEED = 320, TRACER_LEN = 3.6;
   const tOrg = new Float32Array(TRACERS * 3), tDir = new Float32Array(TRACERS * 3), tLen = new Float32Array(TRACERS);
+
+  // ── 착탄 불꽃: 맞은 자리에 0.09초 번쩍(스팟 레이어, 가산). 총알이 '어디에 박혔다'가 보여야 쏘는 맛이 난다 ──
+  const IMP = 32;
+  const impact = new THREE.InstancedMesh(new THREE.SphereGeometry(0.14, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffe2a8, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), IMP);
+  impact.layers.set(LAYER_SPOT); impact.frustumCulled = false; impact.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(impact);
+  const impBorn = new Float32Array(IMP).fill(-1e9), impPos = new Float32Array(IMP * 3); let impCur = 0;
+  function spark(x, y, z, time) { const i = impCur; impCur = (impCur + 1) % IMP; impBorn[i] = time; impPos[i * 3] = x; impPos[i * 3 + 1] = y; impPos[i * 3 + 2] = z; }
+  function updateImpacts(time) {
+    for (let i = 0; i < IMP; i++) {
+      const age = time - impBorn[i];
+      if (age > 0.09) { if (age < 0.5) { _m.makeScale(0, 0, 0); impact.setMatrixAt(i, _m); } continue; }
+      const s = 0.4 + 1.8 * (1 - age / 0.09); _m.makeScale(s, s, s); _m.setPosition(impPos[i * 3], impPos[i * 3 + 1], impPos[i * 3 + 2]); impact.setMatrixAt(i, _m);
+    }
+    impact.instanceMatrix.needsUpdate = true;
+  }
 
   // ── 조준점: 바닥 링(조준 광선이 닿는 자리) + 잠금 링(좀비·보스 접점). 스팟 레이어, 깊이 무시 — 떼 뒤에서도 보인다 ──
   const RET = new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
@@ -199,7 +217,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const MAX = 260;
 
     // 1) 좀비 — 관통: 가까운 순 최대 3명, 대미지 감쇠. 건물·물리에 먼저 막히면 그 앞까지만.
-    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 3);
+    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 4);
     const z = zh ? zh[0] : null;
     let t = zh ? zh[zh.length - 1].t : MAX;
     // 2) 건물 부위
@@ -220,24 +238,26 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (body && body.isDynamic()) {
         const m = body.mass() || 1, dv = Math.min(2.2, 60 / m);   // 시체·파편: 총알 한 발 = 속도 변화 ≤2.2 m/s
         body.applyImpulseAtPoint({ x: _d.x * dv * m, y: 0.5 * dv * m, z: _d.z * dv * m }, { x: hx, y: hy, z: hz }, true);
+        spark(hx, hy, hz, time);
         if (!hooks.onBodyHit?.(body, hx, hy, hz, time)) fx.blood.burst(hx, hy, hz, 3, { dirX: _d.x * 0.5, dirY: 0.5, dirZ: _d.z * 0.5, spread: 0.8, power: 5, scale: 0.8, time });
       } else {
+        spark(hx, hy, hz, time);
         fx.shards.burst(hx, hy, hz, 2, { dirX: -_d.x * 0.3, dirY: 0.6, dirZ: -_d.z * 0.3, spread: 0.5, power: 2.5, scale: 0.6, time });
         if (state.shots % 3 === 0) audio.hitStone();
       }
     } else if (th) {
-      state.hits++;
+      state.hits++; spark(_o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
       th.target.hit(th.part, 2.6, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, _d.x, _d.z, time);
     } else if (bh) {
       const p = bh.part; const hx = _o.x + _d.x * t, hy = _o.y + _d.y * t, hz = _o.z + _d.z * t;
-      const dmg = 5.5;
+      const dmg = 5.5; spark(hx, hy, hz, time);
       p.hp -= dmg; if (bh.b.kind !== 'palace') bh.b.hp -= dmg;   // 궁궐은 빗나간 총알로 통째로 무너지지 않는다(부위만 떨어진다) — 恐龍 결말용
       fx.shards.burst(hx, hy, hz, 3, { dirX: -_d.x * 0.6, dirY: 0.5, dirZ: -_d.z * 0.6, spread: 0.8, power: 3.5, scale: 0.9, time });
       if (state.shots % 2 === 0) audio.hitStone();
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
       if (bh.b.hp <= 0 && bh.b.alive) collapse(bh.b, _d.x, _d.z, time);
     } else if (z) {
-      state.hits++;
+      state.hits++; spark(z.x, z.y, z.z, time);
       let dmg = 2.6;
       for (const h of zh) {
         if (h.t > t) break;
@@ -251,6 +271,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     }
     if (state.shots % TRACER_EVERY === 0) spawnTracer(_o.x, _o.y, _o.z, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
 
+    // 탄피: 약실 오른쪽으로 한 발에 하나(스팟 레이어 놋쇠 — 총이 돌아간다는 리듬이 눈에 보인다)
+    if (fx.brass) { pitchPivot.getWorldQuaternion(_q); _s.set(1, 0, 0).applyQuaternion(_q); _mid.set(0.26, 0.3, 0.22); pitchPivot.localToWorld(_mid); fx.brass.burst(_mid.x, _mid.y, _mid.z, 1, { dirX: _s.x * 0.7, dirY: 0.7, dirZ: _s.z * 0.7, spread: 0.25, power: 3.2, scale: 1, time }); }
     state.heat = Math.min(1, state.heat + 0.0045);
     state.recoil = Math.min(1, state.recoil + 0.35);
     look.state.flash = Math.min(0.08, look.state.flash + 0.02);   // 화면 전체 번쩍임은 낮게 — 총구 불빛은 총구에 있어야 한다
@@ -258,7 +280,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
-  let stickyK = 1;
+  const aimDist = () => THREE.MathUtils.clamp(state.aim.kind === 'none' ? 40 : state.aim.t, 6, 60);
   function update(dt, time, rawDt = dt) {
     // 스핀업/다운
     const want = state.firing && state.jammed <= 0 ? 1 : 0;
@@ -289,16 +311,17 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 조준 반영
     // 조이스틱·키보드: 기울기 → 회전 속도(데드존 0.12, 지수 곡선 — 살짝 기울이면 정밀, 끝까지 밀면 휙 돈다)
     // 실시간(rawDt)으로 돈다 — 히트스톱·사망 슬로우·CONTINUE 중에도 조준은 느려지지 않는다
-    // 점착 조준: 조준선이 좀비·보스 위에 있으면 회전이 절반 가까이 느려진다(콘솔 슈터의 aim friction). 0.1초 보간으로 떨림 없음.
-    const onTarget = state.aim.kind === 'zombie' || state.aim.kind === 'boss';
-    stickyK += ((onTarget ? 0.55 : 1) - stickyK) * Math.min(1, rawDt * 10);
+    // 점착 조준은 뺐다(2026-09-03): 떼 속에선 조준선이 초당 여러 번 좀비를 지나 속도가 덜컥거렸다.
+    // 대신 거리 반비례: 링이 바닥에서 움직이는 속도를 거리와 무관하게(≈30 m/s) 맞춘다. 멀리는 천천히, 가까이는 휙.
+    const ad = aimDist();
+    const yawRate = THREE.MathUtils.clamp(30 / ad, 0.75, 2.6), pitchRate = 1.3 * THREE.MathUtils.clamp(12 / ad, 0.3, 1);
     const kx = !state.live ? 0 : (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
     const ky = !state.live ? 0 : (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
     const sx = state.stick.active ? state.stick.x : kx, sy = state.stick.active ? state.stick.y : ky;
     if (sx || sy) {
       const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
-      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * 2.6 * stickyK * rawDt, -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * 1.3 * stickyK * rawDt, -0.62, state.pitchMax);
+      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * yawRate * rawDt, -1.5, 1.5);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * pitchRate * rawDt, -0.62, state.pitchMax);
     }
     const kb = state.live && !state.stick.active;   // 키보드는 게임 중에만(타이틀·전적 카드에서 Shift/Enter 로 총이 돌면 안 된다)
     state.firing = state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight')));
@@ -307,7 +330,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     yawPivot.updateWorldMatrix(true, true);
     aim();
     // 트레이서 수명
-    updateTracers(time);
+    updateTracers(time); updateImpacts(time);
     updateBombs(dt, time);
     pumpCollapse(time);
     // 파편 낙하로 좀비 압사: 빠르게 움직이는 큰 파편 주변
@@ -365,8 +388,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         return;
       }
       if (!mouseActive) return;
-      state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.62, state.pitchMax);
+      const dk = THREE.MathUtils.clamp(18 / aimDist(), 0.45, 1);   // 멀리 겨눌 땐 드래그도 둔하게
+      state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k() * dk, -1.5, 1.5);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8 * dk, -0.62, state.pitchMax);
       lastX = e.clientX; lastY = e.clientY;
     });
     const stop = (e) => {

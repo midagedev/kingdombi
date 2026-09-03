@@ -72,7 +72,8 @@ const ANIM_GLSL = /* glsl */`
     float lat = length(uAimO.xz + d2 * along - ip.xz);
     float yAt = uAimO.y + uAimD.y * along;
     float hOk = step(-0.2, yAt) * step(yAt, 2.1 * isc);
-    return (1.0 - uDead) * step(0.0, along) * step(along, uAimT + 0.6) * (1.0 - smoothstep(0.55 * isc, 0.85 * isc, lat)) * hOk;
+    float near = 0.4 * clamp((14.0 - along) / 14.0, 0.0, 1.0);   // horde.raycast 와 같은 근접 보정
+    return (1.0 - uDead) * step(0.0, along) * step(along, uAimT + 0.6) * (1.0 - smoothstep(0.6 * isc + near, 0.95 * isc + near, lat)) * hOk;
   }
 
   vec3 rotX(vec3 p, vec3 piv, float a) { p -= piv; float c = cos(a), s = sin(a); return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z) + piv; }
@@ -395,15 +396,16 @@ export function createHorde(scene, physics, {
     HB.n = 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) continue;
-      const r = 0.58 * scale[i], h = 1.95 * scale[i];
       const ex = ox - px[i], ez = oz - pz[i];
+      const near = Math.max(0, Math.min(1, (14 - Math.hypot(ex, ez)) / 14));
+      const r = 0.62 * scale[i] + 0.4 * near, h = 1.95 * scale[i];
       const a = dx * dx + dz * dz, b = 2 * (ex * dx + ez * dz), c = ex * ex + ez * ez - r * r;
       const disc = b * b - 4 * a * c;
       if (disc < 0) continue;
       const t = (-b - Math.sqrt(disc)) / (2 * a);
       if (t < 0 || t > maxT) continue;
       const y = oy + dy * t;
-      if (y < 0 || y > h) continue;
+      if (y < -0.3 || y > h + 0.3) continue;
       if (HB.n === maxHits && t >= HB.t[HB.n - 1]) continue;
       let k = Math.min(HB.n, maxHits - 1);
       while (k > 0 && HB.t[k - 1] > t) { HB.t[k] = HB.t[k - 1]; HB.i[k] = HB.i[k - 1]; k--; }
