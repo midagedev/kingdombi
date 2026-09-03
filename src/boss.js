@@ -4,9 +4,12 @@
 import * as THREE from 'three';
 import { S as STR } from './i18n.js';
 import { LAYER_SPOT } from './look.js';
+import { giantParts, rexParts, giantPlate, helmetHalf, mesh } from './bossmesh.js';
 
-const INK = () => new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.8 });   // 순흑이면 궁궐 배경과 한 덩어리 — 회색 잉크로 실루엣이 선다
-const PLATE = () => { const m = new THREE.MeshStandardMaterial({ color: 0x8a8c94, metalness: 0.6, roughness: 0.4, emissive: 0x404448 }); m.userData.lift = 0.26; return m; };   // 잉크 커브에 눌리지 않게 기저 발광 — 쇠판은 '쏠 곳'으로 읽혀야 한다
+const INK = () => new THREE.MeshStandardMaterial({ color: 0x46474f, roughness: 0.75 });   // 순흑이면 궁궐 배경과 한 덩어리 — 회색 잉크로 실루엣이 선다
+const PLATE = () => { const m = new THREE.MeshStandardMaterial({ color: 0x8a8c94, metalness: 0.6, roughness: 0.4, emissive: 0x404448, side: THREE.DoubleSide }); m.userData.lift = 0.26; return m; };   // 잉크 커브에 눌리지 않게 기저 발광 — 쇠판은 '쏠 곳'으로 읽혀야 한다
+const BONE = () => new THREE.MeshStandardMaterial({ color: 0x8e887c, roughness: 0.65 });    // 뼈·이빨·발톱·가시 — 잉크보다 밝아 결이 선다
+const DARK = () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 0.95, side: THREE.DoubleSide });   // 눈구멍·포승·쇠사슬·찢어진 천
 const VIOLET = 0xb04cff;
 const _ray = new THREE.Ray(), _hit = new THREE.Vector3(), _w = new THREE.Vector3();
 
@@ -77,37 +80,41 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
   function spawnGiant(x, z, time, axis) {
     const S = 7;
     const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
-    const ink = INK(), plate = PLATE();
-    const P = (w, h, d, px, py, pz, parent, m = ink) => { const b = boxMesh(w * S, h * S, d * S, m); b.position.set(px * S, py * S, pz * S); parent.add(b); return b; };
+    const ink = INK(), plate = PLATE(), bone = BONE(), dark = DARK();
+    const G = giantParts(S, { ink, bone, dark });
+    const put = (m, parent, px = 0, py = 0, pz = 0) => { m.position.set(px * S, py * S, pz * S); parent.add(m); return m; };
+    // 골반: 접시뼈 + 허리 포승 + 늘어진 찢어진 옷
     const pelvis = new THREE.Group(); pelvis.position.y = 0.98 * S; root.add(pelvis);
-    P(0.34, 0.22, 0.22, 0, 0, 0, pelvis);
+    put(G.pelvis, pelvis); put(G.pelvisRope, pelvis, 0, 0.05); put(G.tatters, pelvis, 0, 0.04);
+    // 몸통: 어깨 넓은 선반 + 왼쪽 갈비뼈 노출 + 등가시 + 포승
     const torso = new THREE.Group(); torso.position.y = 0.07 * S; pelvis.add(torso);
-    P(0.40, 0.50, 0.24, 0, 0.27, 0, torso);
+    put(G.torso, torso); put(G.ribs, torso); put(G.spine, torso); put(G.torsoRope, torso, 0, 0.36);
+    // 머리: 두개골·아래턱·눈구멍·굽은 뿔·늘어진 머리카락 (옛 머리 상자 중심 0.14S 에 맞춘다)
     const head = new THREE.Group(); head.position.y = 0.55 * S; torso.add(head);
-    P(0.22, 0.26, 0.24, 0, 0.14, 0.02, head);
-    for (const sx of [-1, 1]) { const horn = new THREE.Mesh(new THREE.ConeGeometry(0.04 * S, 0.3 * S, 5), ink); horn.position.set(sx * 0.09 * S, 0.32 * S, 0); horn.rotation.z = -sx * 0.5; horn.castShadow = true; head.add(horn); }
-    const eyes = glowMesh(new THREE.SphereGeometry(0.035 * S, 8, 6)); eyes.position.set(-0.055 * S, 0.17 * S, 0.13 * S); head.add(eyes);
+    const hg = new THREE.Group(); hg.position.set(0, 0.14 * S, 0.02 * S); head.add(hg);
+    hg.add(G.head, G.jaw, G.sockets, G.horns, G.hair);
+    const eyes = glowMesh(new THREE.SphereGeometry(0.03 * S, 8, 6)); eyes.position.set(-0.055 * S, 0.18 * S, 0.135 * S); head.add(eyes);
     const eye2 = eyes.clone(); eye2.position.x = 0.055 * S; head.add(eye2);
     const shoulders = [], hips = [], knees = [], elbows = [];
     for (const sx of [-1, 1]) {
       const sh = new THREE.Group(); sh.position.set(sx * 0.29 * S, 0.5 * S, 0); torso.add(sh); shoulders.push(sh);
-      P(0.11, 0.32, 0.11, 0, -0.16, 0, sh);
+      put(G.upperArm(), sh, 0, -0.16);
       const el = new THREE.Group(); el.position.y = -0.32 * S; sh.add(el); elbows.push(el);
-      P(0.10, 0.34, 0.10, 0, -0.17, 0, el);
-      for (let k = -1; k <= 1; k++) { const claw = new THREE.Mesh(new THREE.ConeGeometry(0.03 * S, 0.16 * S, 4), ink); claw.rotation.x = Math.PI; claw.position.set(k * 0.03 * S, -0.4 * S, 0.02 * S); el.add(claw); }
+      put(G.lowerArm(), el, 0, -0.17); put(G.claws(), el, 0, -0.17); put(G.wristRope(), el, 0, -0.28); put(G.wristChain(), el, sx * 0.05, -0.31, 0.02);
       const hip = new THREE.Group(); hip.position.set(sx * 0.12 * S, -0.08 * S, 0); pelvis.add(hip); hips.push(hip);
-      P(0.15, 0.46, 0.15, 0, -0.23, 0, hip);
+      put(G.upperLeg(), hip, 0, -0.23);
       const kn = new THREE.Group(); kn.position.y = -0.46 * S; hip.add(kn); knees.push(kn);
-      P(0.13, 0.46, 0.13, 0, -0.23, 0, kn);
+      put(G.lowerLeg(), kn, 0, -0.23); put(G.toes(), kn, 0, -0.23);
     }
     const b = makeBase(STR.bossGiant, 1300, root); b.glyph = '巨人'; b.axis = axis;
-    // 몸 부위(약한 피해)
+    // 몸 부위(약한 피해): 잉크 재질 메시만(뼈·포승·천은 장식)
     torso.traverse((m) => { if (m.isMesh && m.material === ink) b.addPart(m, 'body'); });
-    // 쇠판
+    // 쇠판(못 박힌 판 + 세로 보강대)
+    const PL = (w, h, d, px, py, pz, parent) => put(giantPlate(w * S, h * S, d * S, plate), parent, px, py, pz);
     const plates = [
-      P(0.2, 0.24, 0.05, -0.1, 0.32, 0.15, torso, plate), P(0.2, 0.24, 0.05, 0.1, 0.32, 0.15, torso, plate),
-      P(0.16, 0.08, 0.16, 0, 0.02, 0, shoulders[0], plate), P(0.16, 0.08, 0.16, 0, 0.02, 0, shoulders[1], plate),
-      P(0.18, 0.28, 0.06, 0, -0.22, 0.1, hips[0], plate), P(0.18, 0.28, 0.06, 0, -0.22, 0.1, hips[1], plate),
+      PL(0.2, 0.24, 0.05, -0.1, 0.32, 0.22, torso), PL(0.2, 0.24, 0.05, 0.1, 0.32, 0.22, torso),
+      PL(0.2, 0.08, 0.2, 0, 0.07, 0, shoulders[0]), PL(0.2, 0.08, 0.2, 0, 0.07, 0, shoulders[1]),
+      PL(0.18, 0.28, 0.06, 0, -0.22, 0.13, hips[0]), PL(0.18, 0.28, 0.06, 0, -0.22, 0.13, hips[1]),
     ];
     for (const p of plates) b.addPart(p, 'plate', 60);
     // 코어(가슴)
@@ -161,47 +168,50 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
   // ── 恐龍: 좀비 티라노사우루스. 옆구리 쇠판 4·머리 쇠판 2. 코어는 목 아래 심장 — 머리 쇠판이 다 떨어지면 노출 ──
   function spawnRex(x, z, time, axis) {
     const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
-    const ink = INK(), plate = PLATE();
-    const P = (w, h, d, px, py, pz, parent, m = ink) => { const b = boxMesh(w, h, d, m); b.position.set(px, py, pz); parent.add(b); return b; };
+    const ink = INK(), plate = PLATE(), bone = BONE(), dark = DARK();
+    const R = rexParts({ ink, bone, dark });
+    const put = (m, parent, px = 0, py = 0, pz = 0) => { m.position.set(px, py, pz); parent.add(m); return m; };
     const hips = new THREE.Group(); hips.position.y = 4.6; root.add(hips);
-    const body = P(3.0, 3.2, 6.4, 0, 0.2, 0.4, hips); body.rotation.x = -0.12;
+    // 몸통(살짝 앞으로 기운 타원) + 양 옆구리 갈비뼈 + 등가시 + 포승
+    const bodyG = new THREE.Group(); bodyG.position.set(0, 0.2, 0.4); bodyG.rotation.x = -0.12; hips.add(bodyG);
+    const body = put(R.body, bodyG); put(R.ribsL, bodyG); put(R.ribsR, bodyG); put(R.spine, bodyG); put(R.bodyRope, bodyG);
     const neck = new THREE.Group(); neck.position.set(0, 1.2, -3.0); hips.add(neck); neck.rotation.x = 0.55;
-    P(1.7, 1.7, 2.6, 0, 0.5, -1.1, neck);
+    put(R.neck, neck, 0, 0.5, -1.1); put(R.neckSpikes, neck, 0, 0.5, -1.1);
     const headG = new THREE.Group(); headG.position.set(0, 1.0, -2.3); neck.add(headG); headG.rotation.x = -0.75;
-    const skull = P(2.0, 1.5, 3.2, 0, 0.35, -1.4, headG);
+    const skull = put(R.skull, headG, 0, 0.35, -0.4); put(R.skullRidge, headG, 0, 0.35, -0.4); put(R.sockets, headG, 0, 0.35, -0.4);
     const jaw = new THREE.Group(); jaw.position.set(0, -0.3, -0.3); headG.add(jaw);
-    P(1.7, 0.55, 2.7, 0, -0.25, -1.3, jaw);
+    put(R.jaw, jaw, 0, -0.25, 0); put(R.jawSag, jaw, 0, -0.25, 0);
     for (let i = 0; i < 7; i++) for (const sx of [-1, 1]) {
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 4), ink); tooth.rotation.x = Math.PI; tooth.position.set(sx * 0.78, -0.4, -0.3 - i * 0.38); headG.add(tooth);
-      const tooth2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 4), ink); tooth2.position.set(sx * 0.7, 0.05, -0.4 - i * 0.36); jaw.add(tooth2);
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 5), bone); tooth.rotation.x = Math.PI; tooth.position.set(sx * 0.62, -0.42, -0.5 - i * 0.38); headG.add(tooth);
+      const tooth2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 5), bone); tooth2.position.set(sx * 0.55, 0.02, -0.6 - i * 0.36); jaw.add(tooth2);
     }
-    for (const sx of [-1, 1]) { const eye = glowMesh(new THREE.SphereGeometry(0.2, 8, 6)); eye.position.set(sx * 0.85, 0.7, -1.2); headG.add(eye); }
-    // 꼬리 6마디
+    for (const sx of [-1, 1]) { const eye = glowMesh(new THREE.SphereGeometry(0.19, 8, 6)); eye.position.set(sx * 0.72, 0.9, -1.75); headG.add(eye); }
+    // 꼬리 6마디(위 가시 한 줄)
     const tail = []; let par = hips; let tp = new THREE.Vector3(0, 0.3, 3.4);
-    for (let i = 0; i < 6; i++) { const g = new THREE.Group(); g.position.copy(tp); par.add(g); const s = 1 - i * 0.13; P(1.3 * s, 1.2 * s, 1.9, 0, 0, 0.95, g); tail.push(g); par = g; tp = new THREE.Vector3(0, 0, 1.9); }
-    // 다리
+    for (let i = 0; i < 6; i++) { const g = new THREE.Group(); g.position.copy(tp); par.add(g); const s = 1 - i * 0.13; g.add(R.tail(s)); tail.push(g); par = g; tp = new THREE.Vector3(0, 0, 1.9); }
+    // 다리: 허벅지 근육·정강이·발톱 셋. 앞발은 가늘게 굽음
     const legs = [];
     for (const sx of [-1, 1]) {
       const hip = new THREE.Group(); hip.position.set(sx * 1.45, -0.7, 0.9); hips.add(hip);
-      P(1.1, 2.6, 1.6, 0, -1.2, 0.1, hip);
+      put(R.thigh.clone(), hip, 0, -0.6, 0.1);
       const knee = new THREE.Group(); knee.position.set(0, -2.4, 0.2); hip.add(knee); knee.rotation.x = 0.5;
-      P(0.75, 2.2, 0.9, 0, -1.0, -0.2, knee);
+      put(R.shin.clone(), knee, 0, -1.0, -0.2);
       const foot = new THREE.Group(); foot.position.set(0, -2.1, -0.3); knee.add(foot); foot.rotation.x = -0.5;
-      P(1.1, 0.5, 2.2, 0, -0.25, -0.6, foot);
-      for (let k = -1; k <= 1; k++) { const claw = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.7, 4), ink); claw.rotation.x = -Math.PI / 2; claw.position.set(k * 0.38, -0.3, -1.9); foot.add(claw); }
+      put(R.foot.clone(), foot, 0, 0, -0.3); put(R.footClaws(), foot, 0, 0, -0.3);
       legs.push({ hip, knee, foot });
-      const arm = P(0.3, 1.1, 0.3, sx * 1.3, -0.6, -2.6, hips); arm.rotation.x = -0.6;
+      const arm = put(R.arm(), hips, sx * 1.3, -0.6, -2.6); arm.rotation.x = -0.6;
     }
     const b = makeBase(STR.bossRex, 2400, root); b.glyph = '恐龍'; b.axis = axis; b.spawnX = x; b.spawnZ = z;
     for (const m of [body, skull]) b.addPart(m, 'body');
     // 쇠판은 마차에서 보이는 면에: 가슴 정면 2 + 허벅지 정면 2(옆구리는 정면에서 몸통이 가려 못 맞힌다)
+    const PL = (w, h, d, px, py, pz, parent) => put(R.plate(w, h, d, plate), parent, px, py, pz);
     const plates = [
-      P(1.2, 1.4, 0.3, -0.75, 0.0, -3.05, hips, plate), P(1.2, 1.4, 0.3, 0.75, 0.0, -3.05, hips, plate),
-      P(1.0, 1.6, 0.3, 0, -1.2, -0.85, legs[0].hip, plate), P(1.0, 1.6, 0.3, 0, -1.2, -0.85, legs[1].hip, plate),
+      PL(1.2, 1.4, 0.3, -0.75, 0.0, -3.05, hips), PL(1.2, 1.4, 0.3, 0.75, 0.0, -3.05, hips),
+      PL(1.0, 1.6, 0.3, 0, -1.2, -0.85, legs[0].hip), PL(1.0, 1.6, 0.3, 0, -1.2, -0.85, legs[1].hip),
     ];
     for (const p of plates) b.addPart(p, 'plate', 70);
     // 머리 쇠판: 투구처럼 두껍게(얇으면 30m 에서 총알 산포에 다 빗나간다)
-    const skullPlates = [P(0.9, 0.9, 2.6, -0.6, 1.5, -1.4, headG, plate), P(0.9, 0.9, 2.6, 0.6, 1.5, -1.4, headG, plate)];   // 투구 볏: 두개골 위로 솟아 아래서도 맞는다
+    const skullPlates = [-1, 1].map((sd) => put(mesh(helmetHalf(1.15, 2.6, 0.22, sd), plate), headG, 0, 0.45, -1.1));   // 투구 두 쪽: 두개골 위를 덮는 반원통 껍질 + 정중선 볏
     for (const p of skullPlates) b.addPart(p, 'skull', 90);
     const coreDark = new THREE.Mesh(new THREE.OctahedronGeometry(0.75, 0), ink); coreDark.position.set(0, -0.3, -3.35); hips.add(coreDark);
     const core = glowMesh(new THREE.OctahedronGeometry(0.68, 0)); core.position.copy(coreDark.position); hips.add(core);
