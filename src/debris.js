@@ -86,3 +86,47 @@ export function createDecals(scene, { count = 500, color = 0xc1121f } = {}) {
   }
   return { add, update, mesh };
 }
+
+// 피 안개(2026-09-03): 총알이 박히는 순간 살점 파편 뒤로 붉은 안개가 훅 퍼진다. 카메라를 보는 인스턴스 빌보드, 스팟 레이어.
+// 상자 파편(blood)만으로는 '맞았다'가 점 몇 개였다 — 안개 한 장이 피격을 덩어리로 읽히게 한다.
+const MIST_VERT = /* glsl */`
+  attribute float iA; varying vec2 vUv; varying float vA;
+  void main() { vUv = uv; vA = iA; vec4 mv = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    mv.xy += position.xy * length(instanceMatrix[0].xyz); gl_Position = projectionMatrix * mv; }
+`;
+const MIST_FRAG = /* glsl */`
+  precision highp float; uniform vec3 uColor; varying vec2 vUv; varying float vA;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  void main() { vec2 q = vUv - 0.5; float r = length(q) * 2.0; float n = hash(floor(vUv * 9.0)) * 0.35;
+    float a = (1.0 - smoothstep(0.25, 1.0, r + n)) * vA; if (a < 0.01) discard; gl_FragColor = vec4(uColor * a, 1.0); }
+`;
+export function createMist(scene, { count = 240, color = 0xc1121f } = {}) {
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const iA = new THREE.InstancedBufferAttribute(new Float32Array(count), 1); iA.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('iA', iA);
+  const mat = new THREE.ShaderMaterial({ vertexShader: MIST_VERT, fragmentShader: MIST_FRAG, uniforms: { uColor: { value: new THREE.Color(color) } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const mesh = new THREE.InstancedMesh(geo, mat, count); mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; mesh.layers.set(LAYER_SPOT);
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < count; i++) mesh.setMatrixAt(i, z); }
+  scene.add(mesh);
+  const pos = new Float32Array(count * 3), vel = new Float32Array(count * 3), born = new Float32Array(count).fill(-1e9), sz = new Float32Array(count);
+  let cursor = 0; const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
+  const LIFE = 0.55;
+  function puff(x, y, z, n, dirX, dirZ, time) {
+    for (let k = 0; k < n; k++) {
+      const i = cursor; cursor = (cursor + 1) % count; const i3 = i * 3;
+      pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+      vel[i3] = dirX * 2.5 + (Math.random() - 0.5) * 2; vel[i3 + 1] = 0.8 + Math.random(); vel[i3 + 2] = dirZ * 2.5 + (Math.random() - 0.5) * 2;
+      born[i] = time; sz[i] = 0.5 + Math.random() * 0.5;
+    }
+  }
+  function update(dt, time) {
+    let dirty = false;
+    for (let i = 0; i < count; i++) {
+      const age = time - born[i]; if (age > LIFE) { if (age < LIFE + 0.5) { m.makeScale(0, 0, 0); mesh.setMatrixAt(i, m); dirty = true; } continue; }
+      const i3 = i * 3; pos[i3] += vel[i3] * dt; pos[i3 + 1] += vel[i3 + 1] * dt; pos[i3 + 2] += vel[i3 + 2] * dt;
+      const k = age / LIFE; p.set(pos[i3], pos[i3 + 1], pos[i3 + 2]); s.setScalar(sz[i] * (0.4 + k * 1.6)); m.compose(p, q, s); mesh.setMatrixAt(i, m);
+      iA.setX(i, (1 - k) * (1 - k) * 0.9); dirty = true;
+    }
+    if (dirty) { mesh.instanceMatrix.needsUpdate = true; iA.needsUpdate = true; }
+  }
+  return { puff, update, mesh };
+}

@@ -60,7 +60,11 @@ const ANIM_GLSL = /* glsl */`
   attribute float iSpeed;   // 걸음 주파수 배율
   attribute float iHit;     // 피격 시각
   attribute float iType;    // 0 보통 1 거대 2 폭탄 3 질주
+  attribute vec2 iHitInfo;  // 마지막 피격: x = 좌우(−1..1, 모델 기준) · y = 높이(0..2 m)
+  attribute float iGone;    // 잃은 뼈 비트마스크(2 머리 · 3/5 왼팔 · 4/6 오른팔)
   uniform float uTime; uniform float uDead;
+  float goneBit(float bone) { return step(1.0, mod(floor(iGone / pow(2.0, bone) + 0.5), 2.0)); }
+  vec3 bonePivot(float bone) { if (bone == 2.0) return vec3(0.0, 1.58, 0.0); if (bone == 3.0 || bone == 5.0) return vec3(-0.27, 1.54, 0.0); return vec3(0.27, 1.54, 0.0); }
   uniform vec3 uAimO, uAimD; uniform float uAimT;   // 조준 광선(총구 원점·방향·첫 차단물까지 거리) — 광선 위에 선 좀비는 vMark=1 로 표시된다
   varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark;
 
@@ -98,6 +102,10 @@ const ANIM_GLSL = /* glsl */`
     if (bone == 2.0) { p = rotX(p, vec3(0.0, 1.58, 0.0), 0.35 + sin(t * 2.0 + 1.0) * 0.35); p = rotZ(p, vec3(0.0, 1.58, 0.0), sin(t * 1.3 + iPhase * 9.0) * 0.55); }
     // 상체: 앞으로 굽음 + 좌우 비틀림
     if (bone >= 1.0 && bone <= 6.0) { p = rotX(p, vec3(0.0, 1.05, 0.0), 0.62 + jerk * 2.0); p = rotZ(p, vec3(0.0, 1.05, 0.0), sin(t) * 0.12); }
+    // 피격 움찔(2026-09-03): 상체가 총알 반대쪽으로 꺾이고 맞은 쪽으로 비틀린다. 머리를 맞으면 고개가 뒤로 젖혀진다
+    float fl = exp(-(uTime - iHit) * 9.0);
+    if (bone >= 1.0 && bone <= 6.0) { p = rotX(p, vec3(0.0, 1.05, 0.0), -0.5 * fl); p = rotZ(p, vec3(0.0, 1.05, 0.0), iHitInfo.x * 0.5 * fl); }
+    if (bone == 2.0) p = rotX(p, vec3(0.0, 1.58, 0.0), -0.9 * fl * smoothstep(1.35, 1.6, iHitInfo.y));
     // 골반 바운스
     p.y += abs(sin(t)) * 0.07 - 0.05;
     return p;
@@ -124,6 +132,7 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
   void main() {
     vBone = aBone; vHit = iHit; vType = iType; vMark = aimMark();
     vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
+    if (aBone >= 2.0 && aBone <= 6.0) p = mix(p, uDead > 0.5 ? bonePivot(aBone) - vec3(0.0, 0.9, 0.0) : bonePivot(aBone), goneBit(aBone));   // 잃은 사지는 관절점으로 접혀 사라진다
     float shred = exp(-(uTime - iHit) * 16.0) * (1.0 - uDead);
     p.xz += vec2(sin(uTime * 190.0 + position.y * 31.0), cos(uTime * 163.0 + position.x * 27.0)) * 0.06 * shred;
     vModel = position;
@@ -210,7 +219,9 @@ export function createHorde(scene, physics, {
   const iHit = new THREE.InstancedBufferAttribute(new Float32Array(N).fill(-100), 1);
   iHit.setUsage(THREE.DynamicDrawUsage);
   const iType = new THREE.InstancedBufferAttribute(new Float32Array(N), 1);
-  geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType);
+  const iHitInfo = new THREE.InstancedBufferAttribute(new Float32Array(N * 2), 2); iHitInfo.setUsage(THREE.DynamicDrawUsage);
+  const iGone = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iGone.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone);
 
   const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
   const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms });
@@ -234,6 +245,8 @@ export function createHorde(scene, physics, {
   corpseGeo.setAttribute('iHit', cHit);
   const cType = new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1); cType.setUsage(THREE.DynamicDrawUsage);
   corpseGeo.setAttribute('iType', cType);
+  const cGone = new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1); cGone.setUsage(THREE.DynamicDrawUsage);
+  corpseGeo.setAttribute('iGone', cGone); corpseGeo.setAttribute('iHitInfo', new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL * 2), 2));
   const corpseBodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms: deadUniforms });
   const corpseGlowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms: deadUniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
   const corpseDepthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms: deadUniforms });
@@ -267,7 +280,8 @@ export function createHorde(scene, physics, {
   const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
   const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0, impaled: 0 };
-  const hooks = { onExplode: null, onKill: null, onLand: null };
+  const hooks = { onExplode: null, onKill: null, onLand: null, onLimb: null };
+  const gone = new Uint8Array(N);        // 잃은 뼈 비트마스크(셰이더 iGone 과 같은 값)
 
   function reset(i, time) {
     if (spawn.pick) { const s = spawn.pick(); px[i] = s.x; pz[i] = s.z; roofB[i] = s.roof || null; py[i] = s.roof ? s.roof.bounds.max.y - 0.5 : 0; roofT[i] = s.roof ? 1.5 + Math.random() * 4.5 : 0; }
@@ -279,7 +293,7 @@ export function createHorde(scene, physics, {
     hp[i] = THREE.MathUtils.lerp(T.hp[0], T.hp[1], Math.random());
     speed[i] = THREE.MathUtils.lerp(T.speed[0], T.speed[1], Math.random());   // 킹덤 좀비는 빠르다
     scale[i] = THREE.MathUtils.lerp(T.scale[0], T.scale[1], Math.random());
-    alive[i] = 1; latched[i] = 0;
+    alive[i] = 1; latched[i] = 0; gone[i] = 0; iGone.setX(i, 0);
     iPhase.setX(i, Math.random()); iSpeed.setX(i, speed[i] / (8 * scale[i])); iType.setX(i, ty);
     iSpeed.needsUpdate = true; iType.needsUpdate = true;
     respawnAt[i] = 0;
@@ -410,7 +424,7 @@ export function createHorde(scene, physics, {
     }
     stats.alive = aliveCount;
     body.instanceMatrix.needsUpdate = true;
-    iHit.needsUpdate = true;
+    iHit.needsUpdate = true; iHitInfo.needsUpdate = true; iGone.needsUpdate = true; cGone.needsUpdate = true;
 
     // 시체 동기화
     for (const c of physics.corpses) {
@@ -457,9 +471,22 @@ export function createHorde(scene, physics, {
   }
 
   // 피해. 죽으면 시체 스폰 + 인스턴스 재활용 예약. 반환: 죽었는지.
-  function damage(i, amount, dirX, dirZ, time, force = 9) {
+  function damage(i, amount, dirX, dirZ, time, force = 9, hx, hy, hz) {
     iHit.setX(i, time);
+    let side = 0, yf = 1.2;
+    if (hx !== undefined) {
+      const dx = hx - px[i], dz = hz - pz[i], c = Math.cos(yaw[i]), sn = Math.sin(yaw[i]);
+      side = Math.max(-1, Math.min(1, (dx * c - dz * sn) / (0.3 * scale[i]))); yf = (hy - py[i]) / scale[i];
+      iHitInfo.setXY(i, side, yf);
+      // 헤드샷: 정수리 근처 정면 — 피해 2배
+      if (yf > 1.6 && Math.abs(side) < 0.5) amount *= 2.2;
+    }
     hp[i] -= amount;
+    if (hp[i] <= 0 && hx !== undefined && yf > 1.6 && Math.abs(side) < 0.5 && type[i] !== 1) { gone[i] |= 4; hooks.onLimb?.(hx, hy, hz, dirX, dirZ, time, 2); }   // 머리가 날아간 시체
+    else if (hp[i] > 0 && hx !== undefined && yf > 1.15 && yf < 1.75 && Math.abs(side) > 0.5 && type[i] !== 1) {
+      const bit = side < 0 ? 8 | 32 : 16 | 64;   // 왼팔(3·5) / 오른팔(4·6)
+      if (!(gone[i] & bit) && Math.random() < 0.35) { gone[i] |= bit; iGone.setX(i, gone[i]); hooks.onLimb?.(hx, hy, hz, dirX, dirZ, time, 1); }
+    }
     if (hp[i] > 0) { const kb = 1.0 / (scale[i] * scale[i]); /* 개틀링은 밀지 않고 탄막 안에 붙잡는다(경직이 발을 묶음) */ vx[i] -= dirX * kb; vz[i] -= dirZ * kb; stagger[i] = Math.max(stagger[i], 0.45 / scale[i]); return false; }
     kill(i, dirX, dirZ, time, force);
     return true;
@@ -472,7 +499,7 @@ export function createHorde(scene, physics, {
     if (cc === 'impale') stats.impaled++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: py[i], z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
-    cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
+    cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i]; cGone.setX(c.slot, gone[i]);
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);
   }

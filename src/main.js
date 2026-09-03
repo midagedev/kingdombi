@@ -3,7 +3,7 @@ import { buildWorld, ROUTE, ROAD_HALF, districtAt, rng, createRoutePath } from '
 import { createLook, LAYER_SPOT } from './look.js';
 import { createPhysics } from './physics.js';
 import { createHorde } from './horde.js';
-import { createDebris, createDecals } from './debris.js';
+import { createDebris, createDecals, createMist } from './debris.js';
 import { createGun } from './gun.js';
 import { createVehicle } from './vehicle.js';
 import { createBosses } from './boss.js';
@@ -182,6 +182,7 @@ for (const b of world.buildings) {
 const fx = {
   shards: createDebris(scene, { count: 700, color: 0x8d8b86, size: 0.13, gravity: -30, life: 2.6 }),
   blood: createDebris(scene, { count: 500, layer: LAYER_SPOT, color: 0xc1121f, size: 0.1, gravity: -32, bounce: 0.02, life: 1.1 }),
+  mist: createMist(scene),
   gibs: createDebris(scene, { count: 400, color: 0x141210, size: 0.09, gravity: -30, bounce: 0.05, life: 1.6 }),   // 살점: 잉크색, 세계 레이어
   decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
   brass: createDebris(scene, { count: 240, layer: LAYER_SPOT, color: 0xd9a64a, size: 0.08, gravity: -22, bounce: 0.35, life: 1.4 }),   // 탄피
@@ -242,6 +243,8 @@ horde.hooks.onKill = (type, x, z, time, cause) => {
   if (type === 1) { game.hitstop = 0.42; look.state.invert = 1; juice.stamp('巨'); audio.collapse(0.6); }
 };
 // 폭탄 좀비 폭발: 반경 안 좀비 즉사(연쇄), 건물 부위 파괴, 피·파편·플래시·굉음
+// 사지 상실·헤드샷(2026-09-03): 팔이 떨어지거나 머리가 날아가면 그 자리에서 살점·피·안개가 터진다
+horde.hooks.onLimb = (x, y, z, dx, dz, time, big) => { fx.gibs.burst(x, y, z, big > 1 ? 14 : 7, { dirX: dx * 0.7, dirY: 0.5, dirZ: dz * 0.7, spread: 1.0, power: 5, scale: 1.1, time }); fx.blood.burst(x, y, z, big > 1 ? 12 : 6, { dirX: dx * 0.6, dirY: 0.5, dirZ: dz * 0.6, spread: 0.9, power: 6, scale: 1, time }); fx.mist.puff(x, y, z, big > 1 ? 4 : 2, dx, dz, time); if (big > 1) addScore(40, null, true); };
 horde.hooks.onExplode = (x, z, time) => {
   const R = 6.5;
   fx.blood.burst(x, 1.2, z, 40, { dirY: 0.8, spread: 1.6, power: 12, scale: 1.4, time });
@@ -570,7 +573,7 @@ renderer.setAnimationLoop((now) => {
     if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
     gun.update(dt, time, rawDt);
     physics.step(dt, time);
-    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.gibs.update(dt, time); fx.brass.update(dt, time); fx.decals.update(time);
+    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.mist.update(dt, time); fx.gibs.update(dt, time); fx.brass.update(dt, time); fx.decals.update(time);
     audio.setGroan(Math.min(1, horde.stats.alive / 200) * 0.3);
   } else {
     horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경·카드 선택 중)

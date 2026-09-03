@@ -257,7 +257,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       let dmg = 2.6;
       for (const h of zh) {
         if (h.t > t) break;
-        const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 2);
+        const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 2, h.x, h.y, h.z);
+        fx.mist?.puff(h.x, h.y, h.z, killed ? 3 : 1, _d.x, _d.z, time);
         // 산만함 정리(2026-09-03): 죽지 않은 타격은 피 두 점만. 살점·바닥 얼룩은 처치 때만 — 초당 40발이 매번 뿌리면 화면이 소음이 된다
         fx.blood.burst(h.x, h.y, h.z, killed ? 10 : 2, { dirX: _d.x * 0.8, dirY: 0.25, dirZ: _d.z * 0.8, spread: 0.7, power: 5, scale: 1, time });
         if (killed) { fx.gibs.burst(h.x, h.y, h.z, 8, { dirX: _d.x * 0.6, dirY: 0.35, dirZ: _d.z * 0.6, spread: 0.9, power: 4, scale: 1, time }); fx.decals.add(h.x, h.z, 1.6 + Math.random(), time); }
