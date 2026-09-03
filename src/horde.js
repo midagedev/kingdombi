@@ -201,7 +201,7 @@ const DEPTH_FRAG = /* glsl */`
 export const ZOMBIE_COLOR = new THREE.Color(0xb04cff);
 
 export function createHorde(scene, physics, {
-  count = 320, spawn, target, buildings,
+  count = 320, spawn, target, buildings, path,
 } = {}) {
   const geo = buildZombieGeometry();
   const N = count;
@@ -293,9 +293,11 @@ export function createHorde(scene, physics, {
     const small = Math.max(sz.x, sz.z) < 8;
     return { x: c.x, z: c.z, hx: sz.x / 2 + (small ? 0.1 : 0.6), hz: sz.z / 2 + (small ? 0.1 : 0.6), margin: small ? 0.5 : 1.5, b };
   });
-  // 레일 위 마차 근처(±90m) 장애물만 매 0.5초 골라 쓴다 — 길 전체 50채를 좀비 360마리가 매 프레임 훑지 않게
-  let obstacles = allObstacles, obstacleZ = Infinity;
-  let prevTz = target.z;   // 표적의 z 속도(추격전 따라붙기)를 재기 위한 직전 값
+  // 레일 위 마차 근처(±110m) 장애물만 마차가 20m 갈 때마다 골라 쓴다 — 길 전체 50채를 좀비 360마리가 매 프레임 훑지 않게
+  let obstacles = allObstacles, obstacleS = Infinity;
+  const rail = { s: 0, heading: 0, speed: 0 };   // main 이 매 프레임 update() 앞에 써 넣는다(마차의 진행거리·헤딩·앞방향 속도)
+  const _al = { s: 0, lat: 0, k: 0 };            // along() 출력 재사용(프레임당 N번 호출 — 할당 금지)
+  const alongS = (x, z) => path.along(x, z, _al).s;
 
   // 공간 해시(분리력)
   const CELL = 1.6, GRID = 64;
@@ -304,7 +306,7 @@ export function createHorde(scene, physics, {
 
   function update(dt, time) {
     uniforms.uTime.value = time; deadUniforms.uTime.value = time;
-    if (Math.abs(target.z - obstacleZ) > 20) { obstacleZ = target.z; obstacles = allObstacles.filter((o) => Math.abs(o.z - obstacleZ) < 110); }
+    if (Math.abs(rail.s - obstacleS) > 20) { obstacleS = rail.s; obstacles = allObstacles.filter((o) => Math.abs(o.b.s - obstacleS) < 110); }
     cellHead.fill(-1);
     for (let i = 0; i < N; i++) { if (!alive[i]) continue; const c = cellOf(px[i], pz[i]); next[i] = cellHead[c]; cellHead[c] = i; }
 
@@ -312,8 +314,7 @@ export function createHorde(scene, physics, {
     const tx = target.x, tz = target.z;
     // 표적(마차)이 달아나는 속도. 추격전에서 도달한 놈이 그냥 멈추면 마차가 그대로 빠져나가
     // 영원히 아무도 닿지 못한다 — 속도를 맞춰 따라붙어야 물고 늘어진다.
-    const tvz = dt > 1e-5 ? Math.abs((tz - prevTz) / dt) : 0; prevTz = tz;
-    const hold = H.chase ? tvz : 0;
+    const hold = H.chase ? rail.speed : 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) {
         // 보스전엔 budget 만큼만 되살린다 — 떼를 얇게 깔아 보스에 집중시킨다
@@ -322,7 +323,7 @@ export function createHorde(scene, physics, {
       }
       // 낙오: 조준 범위 밖으로 벗어난 놈은 조용히 재배치한다(시체 없이) — 떼는 항상 총구 쪽에 있어야 한다
       // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
-      const dzt = pz[i] - target.z;
+      const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
       if (H.chase ? (dzt > 95 || dzt < -25) : (dzt > 45)) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // seek
@@ -372,7 +373,11 @@ export function createHorde(scene, physics, {
         if (hold > 0.2) { const h = Math.min(sp, hold); vx[i] = dx * h; vz[i] = dz * h; } else { vx[i] *= 0.2; vz[i] *= 0.2; }
         if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
         attackT[i] += dt; latched[i] += dt;
-        if (latched[i] > IMPALE[type[i]] * H.impaleMul) { const sx = Math.sign(px[i] - tx || 1); kill(i, sx * 0.9, -0.2, time, 5, 'impale'); continue; }
+        if (latched[i] > IMPALE[type[i]] * H.impaleMul) {   // 꿰인 놈은 마차 프레임에서 옆(sx)·앞(0.2)으로 튄다 — θ=0 이면 옛 (sx*0.9, -0.2)
+          const th = rail.heading, fx = -Math.sin(th), fz = -Math.cos(th), rx = Math.cos(th), rz = -Math.sin(th);
+          const sx = Math.sign((px[i] - tx) * rx + (pz[i] - tz) * rz || 1);
+          kill(i, sx * 0.9 * rx + 0.2 * fx, sx * 0.9 * rz + 0.2 * fz, time, 5, 'impale'); continue;
+        }
         if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
       } else { attackT[i] = 0.6; latched[i] = Math.max(0, latched[i] - dt * 2); } // 도착 0.4초 뒤 첫 공격
       q.setFromAxisAngle(up, yaw[i]);
@@ -451,14 +456,16 @@ export function createHorde(scene, physics, {
   }
 
   // 들이받기: 마차 정면 쐐기 구역(폭 ±halfW, 앞 front ~ 뒤 back) 안 좀비는 옆·앞으로 날아간다
-  function ram(x, z, halfW, front, back, time) {
+  function ram(x, z, heading, halfW, front, back, time) {
     let n = 0;
+    const fx = -Math.sin(heading), fz = -Math.cos(heading), rx = Math.cos(heading), rz = -Math.sin(heading);
     for (let i = 0; i < N; i++) {
       if (!alive[i]) continue;
       const dx = px[i] - x, dz = pz[i] - z;
-      if (Math.abs(dx) > halfW || dz > back || dz < -front) continue;
-      const sx = Math.sign(dx || (Math.random() - 0.5));
-      kill(i, sx * 0.8, -0.6, time, 9); n++;
+      const lat = dx * rx + dz * rz, ahead = dx * fx + dz * fz;   // 옛 dz ≡ −ahead
+      if (Math.abs(lat) > halfW || -ahead > back || -ahead < -front) continue;
+      const sx = Math.sign(lat || (Math.random() - 0.5));
+      kill(i, sx * 0.8 * rx + 0.6 * fx, sx * 0.8 * rz + 0.6 * fz, time, 9); n++;   // 옆으로 튀고 앞으로 날아감(마차 프레임)
     }
     return n;
   }
@@ -494,9 +501,9 @@ export function createHorde(scene, physics, {
   }
 
   // 앞뒤 전환 순간, 반대편에 남은 놈들을 조용히 치운다(시체 없이) — 조준 범위 밖에서 장갑을 갉는 걸 막는다.
-  // sign +1 = 마차 뒤(z 큰 쪽), -1 = 마차 앞.
+  // sign +1 = 마차 뒤(s 작은 쪽), -1 = 마차 앞.
   function recycleSide(sign, time) {
-    for (let i = 0; i < N; i++) { if (!alive[i]) continue; if ((pz[i] - target.z) * sign > 0) { alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.8; } }
+    for (let i = 0; i < N; i++) { if (!alive[i]) continue; if ((rail.s - alongS(px[i], pz[i])) * sign > 0) { alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.8; } }
   }
 
   // 정원(budget)까지 즉시 줄인다 — 먼 놈부터 조용히 치운다(보스 등장 섬광에 가려 사라진다).
@@ -507,6 +514,6 @@ export function createHorde(scene, physics, {
     for (let k = 0; k < live.length - n; k++) { const i = live[k]; alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 1 + Math.random() * 3; }
   }
 
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, rail, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
   return H;
 }

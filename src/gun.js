@@ -92,7 +92,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   let reticle = null; const setReticle = (el) => { reticle = el; };
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1, cur: { x: -1, y: 0 }, follow: true,
+  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1, cur: { x: -1, y: 0 }, follow: true, heading: 0,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, g: 40, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -320,7 +320,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (state.live && state.follow) aimAtScreen(c.x, c.y, 1 - Math.exp(-rawDt * 14));   // follow=false: 데모 자동조준이 yaw/pitch 를 직접 쓴다
     const kb = state.live && !state.stick.active;   // 키보드는 게임 중에만(타이틀·전적 카드에서 Shift/Enter 로 총이 돌면 안 된다)
     state.firing = state.live && (state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight'))));
-    root.rotation.y = state.facing;   // 포탑 전체가 보는 쪽(추격 π · 보스 0) — 광선·예광탄·조준 링이 월드 행렬을 따라 같이 돈다
+    root.rotation.y = state.facing - state.heading;   // 포탑 전체가 보는 쪽(월드 각 facing). 부모(마차 mount)가 길 헤딩만큼 이미 돌아 있으니 그만큼 뺀다
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     yawPivot.updateWorldMatrix(true, true);

@@ -9,8 +9,12 @@ const WOOD = new THREE.MeshStandardMaterial({ color: 0x1d150d, roughness: 0.9 })
 const box = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = true; x.receiveShadow = true; return x; };
 const cyl = (r, h, m, seg = 14) => { const x = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m); x.castShadow = true; return x; };
 
-export function createVehicle(scene, physics, { x = 0, z = 0 } = {}) {
-  const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
+export function createVehicle(scene, physics, { path, s = 0 } = {}) {
+  // 마차는 레일 s 위를 달린다(src/path.js). 위치·헤딩은 path.pose 가 준다 — 코너는 반경 R 의 호.
+  const root = new THREE.Group(); scene.add(root);
+  const state = { speed: 0, targetSpeed: 0, accel: 0, s, heading: 0 };
+  const setPose = () => { state.heading = path.pose(state.s, root.position); root.rotation.y = state.heading; };
+  setPose(); const x = root.position.x, z = root.position.z;
   const body = new THREE.Group(); root.add(body);
   // 차체: 낮은 철갑 상자 + 위쪽 테두리 판 + 뒤쪽 포좌
   const hull = box(2.9, 1.1, 5.0, IRON); hull.position.y = 1.15; body.add(hull);
@@ -58,22 +62,21 @@ export function createVehicle(scene, physics, { x = 0, z = 0 } = {}) {
   const kin = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, 1.1, z));
   world.createCollider(RAPIER.ColliderDesc.cuboid(1.55, 1.0, 3.3).setCollisionGroups(0x0002FFFF).setFriction(0.6), kin);
 
-  const state = { speed: 0, targetSpeed: 0, accel: 0 };
-  let t = 0;
+  let t = 0; const _q = new THREE.Quaternion(), AXIS_Y = new THREE.Vector3(0, 1, 0);
   function update(dt) {
     t += dt;
     const want = state.targetSpeed, dv = want - state.speed;
     const a = THREE.MathUtils.clamp(dv / Math.max(dt, 1e-3), -5.5, 3.2);
     state.accel = a; state.speed += a * dt;
     if (Math.abs(state.speed) < 0.01 && want === 0) state.speed = 0;
-    root.position.z -= state.speed * dt;
+    state.s += state.speed * dt; setPose();
     for (const w of wheels) w.rotation.x -= state.speed / 0.78 * dt;
     // 덜컹거림: 속도에 비례한 상하 진동 + 가감속 피치
     const k = state.speed / 7.5;
     body.position.y = Math.sin(t * 13.0) * 0.022 * k + Math.sin(t * 7.3) * 0.012 * k;
     body.rotation.x += ((-a * 0.012) + Math.sin(t * 9.1) * 0.004 * k - body.rotation.x) * Math.min(1, dt * 6);
     body.rotation.z = Math.sin(t * 5.7) * 0.006 * k;
-    kin.setNextKinematicTranslation({ x: root.position.x, y: 1.1, z: root.position.z });
+    kin.setNextKinematicTranslation({ x: root.position.x, y: 1.1, z: root.position.z }); _q.setFromAxisAngle(AXIS_Y, state.heading); kin.setNextKinematicRotation(_q);
   }
   return { root, body, mount, pos: root.position, state, update };
 }

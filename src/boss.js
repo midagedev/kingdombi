@@ -74,7 +74,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
   }
 
   // ── 巨人: 7배 좀비. 쇠판 6장(가슴 2·어깨 2·허벅지 2). 코어는 가슴 — 쇠판이 2장 이하로 남으면 노출 ──
-  function spawnGiant(x, z, time) {
+  function spawnGiant(x, z, time, axis) {
     const S = 7;
     const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
     const ink = INK(), plate = PLATE();
@@ -100,7 +100,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       const kn = new THREE.Group(); kn.position.y = -0.46 * S; hip.add(kn); knees.push(kn);
       P(0.13, 0.46, 0.13, 0, -0.23, 0, kn);
     }
-    const b = makeBase(STR.bossGiant, 1300, root); b.glyph = '巨人';
+    const b = makeBase(STR.bossGiant, 1300, root); b.glyph = '巨人'; b.axis = axis;
     // 몸 부위(약한 피해)
     torso.traverse((m) => { if (m.isMesh && m.material === ink) b.addPart(m, 'body'); });
     // 쇠판
@@ -119,21 +119,22 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.onPlateLost = () => { if (b.coreExposed()) juice.banner(STR.chestOpen, 1800); };
     b.stopDist = 17; b.speed = 2.4; b.score = 15000;
     b.tick = (dt, time) => {
-      const vp = vehicle.pos; const dz = vp.z - root.position.z;
-      const dist = Math.abs(dz);
-      root.rotation.y = Math.atan2(vp.x - root.position.x, dz);
+      const vp = vehicle.pos; const ax = b.axis, tx = vp.x - root.position.x, tz = vp.z - root.position.z;
+      const d = tx * ax.x + tz * ax.z;   // 축(보스→마차) 방향 거리 — 부호는 옛 dz 와 같다
+      const dist = Math.abs(d);
+      root.rotation.y = Math.atan2(tx, tz);
       b.stateT += dt;
       const walking = b.state === 'walk';
       if (b.state === 'enter') { b.state = 'walk'; audio.stomp?.(); game.shake = 1.4; horde.crushNear(root.position.x, root.position.z, 14, time); }   // 등장: 발을 내리찍어 주변 떼가 날아간다
       if (b.state === 'walk') {
-        if (dist > b.stopDist) { root.position.z += Math.sign(dz) * b.speed * dt; root.position.x += (vp.x - root.position.x) * dt * 0.3; }
+        if (dist > b.stopDist) { const s = Math.sign(d) * b.speed * dt; root.position.x += ax.x * s + (tx - d * ax.x) * dt * 0.3; root.position.z += ax.z * s + (tz - d * ax.z) * dt * 0.3; }   // 축 전진 + 축에 수직인 성분만 따라붙기
         else { b.state = 'wind'; b.stateT = 0; }
         // 걸음: 발이 땅에 닿는 순간 발밑 좀비가 튄다
         const stepPhase = Math.sin(b.t * 1.7); if (b.lastStep === undefined) b.lastStep = stepPhase;
         if ((b.lastStep < 0) !== (stepPhase < 0)) { const side = stepPhase < 0 ? -1 : 1; const fx0 = root.position.x + Math.cos(root.rotation.y) * side * 0.12 * S, fz0 = root.position.z - Math.sin(root.rotation.y) * side * 0.12 * S; if (horde.crushNear(fx0, fz0, 3.2, time)) { audio.stomp?.(); game.shake = Math.max(game.shake, 0.35); } }
         b.lastStep = stepPhase;
       } else if (b.state === 'wind') {
-        if (b.stateT > 0.9) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(14); horde.crushNear(root.position.x, root.position.z - 6, 7, time); }
+        if (b.stateT > 0.9) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(14); horde.crushNear(root.position.x - ax.x * 6, root.position.z - ax.z * 6, 7, time); }   // 마차 반대쪽 6m
       } else if (b.state === 'slam') { if (b.stateT > 0.5) { b.state = 'rest'; b.stateT = 0; } }
       else if (b.state === 'rest') { if (b.stateT > 1.6) { b.state = dist > b.stopDist + 3 ? 'walk' : 'wind'; b.stateT = 0; } }
       // 걷기 애니메이션
@@ -158,7 +159,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
   }
 
   // ── 恐龍: 좀비 티라노사우루스. 옆구리 쇠판 4·머리 쇠판 2. 코어는 목 아래 심장 — 머리 쇠판이 다 떨어지면 노출 ──
-  function spawnRex(x, z, time) {
+  function spawnRex(x, z, time, axis) {
     const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
     const ink = INK(), plate = PLATE();
     const P = (w, h, d, px, py, pz, parent, m = ink) => { const b = boxMesh(w, h, d, m); b.position.set(px, py, pz); parent.add(b); return b; };
@@ -191,7 +192,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       legs.push({ hip, knee, foot });
       const arm = P(0.3, 1.1, 0.3, sx * 1.3, -0.6, -2.6, hips); arm.rotation.x = -0.6;
     }
-    const b = makeBase(STR.bossRex, 2400, root); b.glyph = '恐龍';
+    const b = makeBase(STR.bossRex, 2400, root); b.glyph = '恐龍'; b.axis = axis; b.spawnX = x; b.spawnZ = z;
     for (const m of [body, skull]) b.addPart(m, 'body');
     // 쇠판은 마차에서 보이는 면에: 가슴 정면 2 + 허벅지 정면 2(옆구리는 정면에서 몸통이 가려 못 맞힌다)
     const plates = [
@@ -208,10 +209,12 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.coreExposed = () => b.platesLeft('skull') === 0;
     b.coreGlow = core.material; b.aimCore = coreDark;
     b.onPlateLost = () => { if (b.coreExposed()) juice.banner(STR.heartExposed, 2000); };
-    b.score = 50000; b.holdDist = 20; b.minZ = z + 22;   // 궁궐 정문(-475) 앞에 서야 총알이 문루에 먹히지 않는다 — 스폰점보다 22m 앞(≈-468)까지만 물러난다
+    b.score = 50000; b.holdDist = 20; b.minAlong = 22;   // 궁궐 정문 앞에 서야 총알이 문루에 먹히지 않는다 — 스폰점에서 축 방향 22m 앞까지만 물러난다
     b.tick = (dt, time) => {
-      const vp = vehicle.pos; const dz = vp.z - root.position.z; const dist = Math.abs(dz);
-      const face = Math.atan2(vp.x - root.position.x, dz) + Math.PI;   // 모델은 -z 를 본다
+      const vp = vehicle.pos; const ax = b.axis, tx = vp.x - root.position.x, tz = vp.z - root.position.z;
+      const d = tx * ax.x + tz * ax.z, dist = Math.abs(d);   // 축(보스→마차) 방향 거리
+      const along = (root.position.x - b.spawnX) * ax.x + (root.position.z - b.spawnZ) * ax.z;   // 스폰점 기준 축 좌표
+      const face = Math.atan2(tx, tz) + Math.PI;   // 모델은 -z 를 본다
       const wantYaw = face + (b.state === 'charge' || b.state === 'bite' ? 0 : 0.7);   // 대기·후퇴엔 3/4 측면 — 긴 몸·꼬리가 읽힌다
       let dy = wantYaw - root.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); root.rotation.y += dy * Math.min(1, dt * 3);
       b.stateT += dt;
@@ -219,20 +222,20 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       let moving = 0;
       if (b.state === 'enter') { if (b.stateT < 1.4) { if (b.stateT < dt) { audio.roar?.(1); look.state.flash = Math.max(look.state.flash, 0.5); game.shake = 1.5; horde.crushNear(root.position.x, root.position.z, 16, time); } } else { b.state = 'hold'; b.stateT = 0; } }   // 등장 포효: 반경 16m 떼가 날아간다
       else if (b.state === 'hold') {
-        if (dist > b.holdDist + 2 || root.position.z < b.minZ) { root.position.z += Math.sign(dz) * 4 * dt; moving = 1; }
+        if (dist > b.holdDist + 2 || along < b.minAlong) { const s = Math.sign(d) * 4 * dt; root.position.x += ax.x * s; root.position.z += ax.z * s; moving = 1; }
         // 먹기: 대기 1초 뒤 머리 근처 좀비 하나를 물어 올린다(시체가 턱에서 떨어진다)
         if (b.stateT > 1.0 && !b.ate) { b.ate = true; headG.getWorldPosition(_w); let best = -1, bd = 81; for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const dx = horde.px[i] - _w.x, dz2 = horde.pz[i] - _w.z, d2 = dx * dx + dz2 * dz2; if (d2 < bd) { bd = d2; best = i; } } if (best >= 0) { horde.kill(best, 0, 0, time, 2); fx.blood.burst(_w.x, _w.y - 0.8, _w.z, 26, { dirY: 0.2, spread: 1.0, power: 6, scale: 1.3, time }); fx.gibs.burst(_w.x, _w.y - 0.8, _w.z, 14, { dirY: 0.1, spread: 0.9, power: 5, scale: 1.2, time }); audio.hitFlesh(); b.eatT = b.t; } }
         if (b.stateT > (phase === 1 ? 3.2 : 2.2)) { b.state = phase >= 2 && Math.random() < 0.55 ? 'stomp' : 'charge'; b.stateT = 0; b.ate = false; if (b.state === 'stomp') audio.roar?.(0.7); }
       } else if (b.state === 'charge') {
-        if (dist > 11) { root.position.z += Math.sign(dz) * 10 * dt; root.position.x += (vp.x - root.position.x) * dt * 0.6; moving = 2; headG.getWorldPosition(_w); if (horde.crushNear(_w.x, _w.z, 4.5, time)) fx.blood.burst(_w.x, _w.y - 1, _w.z, 8, { dirY: 0.6, spread: 1.2, power: 7, scale: 1.1, time }); }   // 돌진: 앞을 막은 떼를 머리로 쓸어 날린다
+        if (dist > 11) { const s = Math.sign(d) * 10 * dt; root.position.x += ax.x * s + (tx - d * ax.x) * dt * 0.6; root.position.z += ax.z * s + (tz - d * ax.z) * dt * 0.6; moving = 2; headG.getWorldPosition(_w); if (horde.crushNear(_w.x, _w.z, 4.5, time)) fx.blood.burst(_w.x, _w.y - 1, _w.z, 8, { dirY: 0.6, spread: 1.2, power: 7, scale: 1.1, time }); }   // 돌진: 앞을 막은 떼를 머리로 쓸어 날린다
         else { b.state = 'bite'; b.stateT = 0; }
       } else if (b.state === 'bite') {
-        if (b.stateT > 0.42 && !b.bit) { b.bit = true; onDamage(22); look.state.flash = Math.max(look.state.flash, 0.45); game.shake = 1.6; audio.collapse(0.7); fx.blood.burst(vp.x, 3, vp.z - 2, 20, { dirY: 0.7, spread: 1.4, power: 8, scale: 1.2, time }); }
+        if (b.stateT > 0.42 && !b.bit) { b.bit = true; onDamage(22); look.state.flash = Math.max(look.state.flash, 0.45); game.shake = 1.6; audio.collapse(0.7); fx.blood.burst(vp.x - ax.x * 2, 3, vp.z - ax.z * 2, 20, { dirY: 0.7, spread: 1.4, power: 8, scale: 1.2, time }); }
         if (b.stateT > 1.0) { b.state = 'retreat'; b.stateT = 0; b.bit = false; }
       } else if (b.state === 'retreat') {
-        if (dist < b.holdDist && root.position.z - Math.sign(dz) * 6 * dt >= b.minZ) { root.position.z -= Math.sign(dz) * 6 * dt; moving = 1; } else { b.state = 'hold'; b.stateT = 0; }
+        if (dist < b.holdDist && along - Math.sign(d) * 6 * dt >= b.minAlong) { const s = Math.sign(d) * 6 * dt; root.position.x -= ax.x * s; root.position.z -= ax.z * s; moving = 1; } else { b.state = 'hold'; b.stateT = 0; }
       } else if (b.state === 'stomp') {
-        if (b.stateT > 0.7 && !b.threw) { b.threw = true; game.shake = 1.0; audio.stomp?.(); const n = phase === 3 ? 2 : 1; for (let k = 0; k < n; k++) throwChunk(root, k, time); }
+        if (b.stateT > 0.7 && !b.threw) { b.threw = true; game.shake = 1.0; audio.stomp?.(); const n = phase === 3 ? 2 : 1; for (let k = 0; k < n; k++) throwChunk(root, k, time, ax); }
         if (b.stateT > 1.6) { b.state = 'hold'; b.stateT = 0; b.threw = false; }
       }
       // 애니메이션: 걷기(다리 교차·꼬리 흔들림·몸 상하), 물기(턱)
@@ -254,9 +257,10 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
 
   // ── QTE: 기와 덩어리 투척 ──
   const chunkMat = new THREE.MeshStandardMaterial({ color: 0x3b3a38, roughness: 0.95 });
-  function throwChunk(from, k, time) {
+  function throwChunk(from, k, time, axis = { x: 0, z: 1 }) {
     const { RAPIER, world } = physics; const vp = vehicle.pos;
-    const sx = from.position.x + (k ? 2.5 : -2.5), sy = 6.5, sz = from.position.z;
+    const off = k ? 2.5 : -2.5;   // 축에 수직으로 양손 위치
+    const sx = from.position.x + axis.z * off, sy = 6.5, sz = from.position.z - axis.x * off;
     const tx = vp.x + (Math.random() - 0.5) * 2.5, ty = 2.2, tz = vp.z + (Math.random() - 0.5) * 2;
     const T = 1.9 + k * 0.35, g = 16;
     const vel = { x: (tx - sx) / T, y: (ty - sy + 0.5 * g * T * T) / T, z: (tz - sz) / T };
@@ -291,8 +295,8 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     if (!shown) reticle.hidden = true;
   }
 
-  function spawn(kind, x, z, time) {
-    boss = kind === 'giant' ? spawnGiant(x, z, time) : spawnRex(x, z, time);
+  function spawn(kind, x, z, time, axis = { x: 0, z: 1 }) {   // axis = 보스에서 마차를 향하는 수평 단위 벡터
+    boss = kind === 'giant' ? spawnGiant(x, z, time, axis) : spawnRex(x, z, time, axis);
     bar.hidden = false; bossName.textContent = boss.name; bossFill.style.width = '100%'; bossChip.style.width = '100%'; chip = 1;
     gun.targets.push(boss); gun.state.pitchMax = 0.62;
     juice.banner(boss.name, 3000); audio.roar?.(1);
