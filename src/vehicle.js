@@ -28,6 +28,14 @@ export function createVehicle(scene, physics, { x = 0, z = 0 } = {}) {
   const ramL = box(0.12, 1.5, 2.4, IRON2); ramL.position.set(-0.75, 1.05, -3.2); ramL.rotation.y = 0.62; body.add(ramL);
   const ramR = box(0.12, 1.5, 2.4, IRON2); ramR.position.set(0.75, 1.05, -3.2); ramR.rotation.y = -0.62; body.add(ramR);
   const ramTop = box(2.0, 0.1, 1.9, IRON2); ramTop.position.set(0, 1.78, -3.0); ramTop.rotation.x = 0.28; body.add(ramTop);
+  // 가시(2026-09-03): 측면 판·정면 쐐기에 쇠못 — 붙은 좀비가 여기 꿰여 죽는다(horde IMPALE). 인스턴스 하나 = 드로우 1.
+  const spikeAt = [];
+  for (const sx of [-1, 1]) for (let j = 0; j < 8; j++) spikeAt.push({ p: [sx * 1.7, 1.05 + (j % 2) * 0.3, -2.25 + j * 0.62], r: [0, 0, -sx * 1.05] });   // 바깥·위로 60° — 높은 카메라에서도 읽힌다
+  for (const [x, y] of [[-1.15, 1.0], [-0.6, 1.25], [0, 1.45], [0.6, 1.25], [1.15, 1.0], [-0.85, 0.75], [0.85, 0.75], [0, 0.85]]) spikeAt.push({ p: [x, y, -3.55 - (1 - Math.abs(x) / 1.3) * 0.55], r: [-Math.PI / 2 + 0.15, 0, 0] });
+  const spikes = new THREE.InstancedMesh(new THREE.ConeGeometry(0.08, 0.62, 6), IRON2, spikeAt.length); spikes.castShadow = true;
+  { const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+    spikeAt.forEach((s, i) => { e.set(s.r[0], s.r[1], s.r[2]); q.setFromEuler(e); v.set(...s.p); m.compose(v, q, one); spikes.setMatrixAt(i, m); }); }
+  body.add(spikes);
   // 정면 등롱(스팟 호박) — 길을 비추는 실광원은 예산 밖. 색만.
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffb347 })); lamp.position.set(0, 2.45, -2.9); lamp.layers.set(LAYER_SPOT); body.add(lamp);
   const lampBody = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), new THREE.MeshStandardMaterial({ color: 0x6a4a22, emissive: 0xffb35c, emissiveIntensity: 1.4 })); lampBody.position.copy(lamp.position); body.add(lampBody);

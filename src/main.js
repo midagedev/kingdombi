@@ -102,7 +102,8 @@ hud.innerHTML = `
   <div id="wave"><span id="waveN"></span><span class="lbl" id="waveL"></span></div>
   <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div class="lbl"><span id="hpN">100</span> 장갑</div></div>
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
-  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">오늘의 길 ${DAY} · 궁궐까지 ${ROUTE.start - ROUTE.end} m · 恐龍이 기다린다<br>누르면 방아쇠, 드래그로 조준, 雷 는 비격진천뢰<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라</div></div>
+  <div id="stick"><i></i></div>
+  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">오늘의 길 ${DAY} · 궁궐까지 ${ROUTE.start - ROUTE.end} m · 恐龍이 기다린다<br>${isMobile ? '누른 자리가 조이스틱 — 기울여 조준, 누른 동안 발사' : '드래그로 조준, 누른 동안 발사 · 우클릭·Space 로 雷'}<br>雷 는 비격진천뢰 — 조준 링 자리에 떨어진다<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라</div></div>
   <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">누르면 코인 한 개</div></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
@@ -123,6 +124,9 @@ style.textContent = `
   #bomb.on { opacity:.9; } #bomb.empty { opacity:.3; } #bomb:active { transform: scale(.92); }
   #bomb b { font: 300 24px/1 var(--serif); color: var(--ink); }
   #bomb span { display:flex; gap:4px; margin-top:5px; } #bomb span i { width:5px; height:5px; border-radius:50%; background:#ffb347; display:block; }
+  #stick { position:absolute; left:76px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 18px); width:108px; height:108px; margin:-54px 0 0 -54px; border:1px solid rgba(233,230,223,.45); border-radius:50%; opacity:0; pointer-events:none; }
+  #stick.hint { opacity:.22; transition: opacity .4s; } #stick.on { opacity:.8; }
+  #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
   #title, #end, #cont { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
   #end { background: rgba(0,0,0,.76); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   #title .mark, #cont .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
@@ -188,7 +192,8 @@ function addScore(n, glyph, noMult = false) {
   game.score += v;
   if (glyph) juice.pop(v, glyph);
 }
-horde.hooks.onKill = (type, x, z, time) => {
+horde.hooks.onKill = (type, x, z, time, cause) => {
+  if (cause === 'impale') { addScore(30, null, true); fx.blood.burst(x, 1.1, z, 8, { dirX: (x - vpos.x) * 0.3, dirY: 0.5, spread: 0.9, power: 5, scale: 1, time }); return; }   // 가시에 꿰임: 헐값, 배율 없음(붙게 두는 게 이득이면 안 된다)
   if (director.ramming) { addScore(30, null, true); return; }
   juice.onKill(time, horde.stats.kills);
   addScore(KILL_SCORE[type]);
@@ -200,7 +205,7 @@ horde.hooks.onExplode = (x, z, time) => {
   fx.blood.burst(x, 1.2, z, 40, { dirY: 0.8, spread: 1.6, power: 12, scale: 1.4, time });
   fx.shards.burst(x, 0.5, z, 30, { dirY: 1.0, spread: 1.5, power: 10, scale: 0.9, time });
   fx.gibs.burst(x, 1.0, z, 30, { dirY: 0.9, spread: 1.6, power: 11, scale: 1.3, time });
-  fx.decals.add(x, z, 4.5, time);
+  fx.decals.add(x, z, 3.2, time);
   look.state.flash = Math.max(look.state.flash, 0.5);
   audio.collapse(0.9);
   juice.stamp('爆');
@@ -224,7 +229,7 @@ const juice = createJuice(hud);
 const nightlife = createNightlife(scene, world.buildings, { playerZ: ROUTE.start, maxLights: 0 });   // 라이트 예산: 거리등 2 + 총구 + 화재 1
 const audio = createAudio();
 const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { parent: vehicle.mount, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.center, sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); addScore(b.kind === 'palace' ? 20000 : 800, b.kind === 'palace' ? '宮' : '家'); } else addScore(50); } });
-gun.attachInput(canvas);
+gun.attachInput(canvas, { stickEl: $('stick'), forceStick: q.has('stick') });   // 터치는 조이스틱, 마우스는 드래그. ?stick=1 로 강제
 const bosses = createBosses(scene, physics, {
   fx, audio, look, juice, horde, gun, vehicle, game, hud, camera,
   onScore: (n, glyph) => addScore(n, glyph),
@@ -258,7 +263,10 @@ gun.hooks.onBlast = (x, z, R, time) => {
   }
   const dv = Math.hypot(vpos.x - x, vpos.z - z); if (dv < R) damageArmor(10 * (1 - dv / R));
 };
-$('bomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (game.started && !game.over && game.cont <= 0) gun.throwBomb(game.time); });
+const bombNow = () => { if (game.started && !game.over && game.cont <= 0) gun.throwBomb(game.time); };
+$('bomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); bombNow(); });
+gun.hooks.onBombKey = bombNow;
+addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); bombNow(); } });
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -302,7 +310,7 @@ function updateCamera(dt) {
   const yaw = gun.state.yaw * 0.6;
   camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, 10.2, Math.cos(yaw) * 14.0 + Math.sin(yaw) * 1.8).add(camBase);   // 마차 전체(바퀴까지)가 아래에 보이도록 조금 더 뒤·위
   const r = gun.state.recoil + game.shake;
-  camPos.x += (Math.random() - 0.5) * r * 0.12; camPos.y += (Math.random() - 0.5) * r * 0.1;
+  camPos.x += (Math.random() - 0.5) * r * 0.06; camPos.y += (Math.random() - 0.5) * r * 0.05;   // 반동 떨림 절반 — 화면이 아니라 총이 흔들려야 한다
   camera.position.lerp(camPos, Math.min(1, dt * 9));
   tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(34).add(camBase).add(new THREE.Vector3(0, -3.2, 0));
   camTarget.lerp(tmpV, Math.min(1, dt * 12));
@@ -387,6 +395,7 @@ renderer.setAnimationLoop((now) => {
   const dt = rawDt * game.timeScale;
   const started = game.started && !game.over;
   if (started) game.time += dt;
+  gun.state.showAim = started && game.cont <= 0;
   const time = game.time;
   look.state.invert *= Math.exp(-rawDt * 22);
 

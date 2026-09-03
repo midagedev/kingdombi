@@ -67,10 +67,18 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const TRACER_EVERY = 5, TRACER_SPEED = 320, TRACER_LEN = 4.5;
   const tOrg = new Float32Array(TRACERS * 3), tDir = new Float32Array(TRACERS * 3), tLen = new Float32Array(TRACERS);
 
+  // ── 조준점: 바닥 링(조준 광선이 닿는 자리) + 잠금 링(좀비·보스 접점). 스팟 레이어, 깊이 무시 — 떼 뒤에서도 보인다 ──
+  const RET = new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.95, 40), RET); ring.rotation.x = -Math.PI / 2; ring.layers.set(LAYER_SPOT); ring.renderOrder = 5; ring.visible = false; scene.add(ring);
+  const lockTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.arc(32, 32, 22, 0, 6.2832); g.stroke(); g.fillRect(30, 30, 4, 4); for (const [x, y, w, h] of [[30, 2, 4, 10], [30, 52, 4, 10], [2, 30, 10, 4], [52, 30, 10, 4]]) g.fillRect(x, y, w, h); return new THREE.CanvasTexture(c); })();
+  const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
+
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3 };
+  const state = { yaw: 0, pitch: -0.06, firing: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
+    aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
+    stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
-  const hooks = { onBodyHit: null, onBlast: null };
+  const hooks = { onBodyHit: null, onBlast: null, onBombKey: null };
   const RATE = 42;     // 발/초
   let fireAcc = 0;
 
@@ -151,6 +159,34 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     }
   }
 
+  // 매 프레임 조준 광선(퍼짐 없음)의 첫 접점. 링·잠금 링·좀비 하이라이트(horde 유니폼)가 여기서 나온다.
+  function aim() {
+    muzzle.getWorldPosition(_o); pitchPivot.getWorldDirection(_d); _d.negate(); _ray.set(_o, _d);
+    const MAX = 140; const a = state.aim;
+    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 1);
+    const zt = zh ? zh[0].t : Infinity;
+    let block = MAX, kind = 'none';
+    const bh = raycastBuildings(_ray, block); if (bh) { block = bh.t; kind = 'wall'; }
+    let th = null; for (const tg of targets) { const r = tg.raycast(_ray, block); if (r && r.t < (th ? th.t : Infinity)) th = r; }
+    if (th) { block = th.t; kind = 'boss'; }
+    rapierRay.origin.x = _o.x; rapierRay.origin.y = _o.y; rapierRay.origin.z = _o.z; rapierRay.dir.x = _d.x; rapierRay.dir.y = _d.y; rapierRay.dir.z = _d.z;
+    const ph = physics.world.castRay(rapierRay, block, true, undefined, 0xFFFFFFFD);
+    if (ph && ph.timeOfImpact < block) { block = ph.timeOfImpact; kind = 'ground'; }
+    let t = block;
+    if (zt < block) { t = zt; kind = 'zombie'; }
+    a.t = t; a.block = block; a.kind = kind;
+    a.x = _o.x + _d.x * t; a.y = _o.y + _d.y * t; a.z = _o.z + _d.z * t;
+    const u = horde.uniforms; if (u.uAimO) { u.uAimO.value.copy(_o); u.uAimD.value.copy(_d); u.uAimT.value = state.showAim ? block : -1; }
+    // 링: 바닥(접점의 x,z). 하늘을 겨누면 숨김. 잠금 링: 좀비·보스 접점에만.
+    const show = state.showAim && kind !== 'none';
+    ring.visible = show; lock.visible = show && (kind === 'zombie' || kind === 'boss');
+    if (show) {
+      ring.position.set(a.x, 0.06, a.z); const rs = kind === 'zombie' || kind === 'boss' ? 0.8 : 1.0; ring.scale.setScalar(rs);
+      RET.color.setHex(kind === 'zombie' || kind === 'boss' ? 0xff4a3c : 0xffb347);
+      lock.position.set(a.x, a.y, a.z);
+    }
+  }
+
   function fireOne(time) {
     state.shots++;
     muzzle.getWorldPosition(_o);
@@ -204,9 +240,9 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       for (const h of zh) {
         if (h.t > t) break;
         const killed = horde.damage(h.index, dmg, _d.x, _d.z, time, 2);
-        fx.blood.burst(h.x, h.y, h.z, killed ? 10 : 4, { dirX: _d.x * 0.8, dirY: 0.25, dirZ: _d.z * 0.8, spread: 0.7, power: 5, scale: 1, time });
-        fx.gibs.burst(h.x, h.y, h.z, killed ? 8 : 2, { dirX: _d.x * 0.6, dirY: 0.35, dirZ: _d.z * 0.6, spread: 0.9, power: 4, scale: 1, time });
-        fx.decals.add(h.x, h.z, killed ? 1.6 + Math.random() : 0.5 + Math.random() * 0.5, time);
+        // 산만함 정리(2026-09-03): 죽지 않은 타격은 피 두 점만. 살점·바닥 얼룩은 처치 때만 — 초당 40발이 매번 뿌리면 화면이 소음이 된다
+        fx.blood.burst(h.x, h.y, h.z, killed ? 10 : 2, { dirX: _d.x * 0.8, dirY: 0.25, dirZ: _d.z * 0.8, spread: 0.7, power: 5, scale: 1, time });
+        if (killed) { fx.gibs.burst(h.x, h.y, h.z, 8, { dirX: _d.x * 0.6, dirY: 0.35, dirZ: _d.z * 0.6, spread: 0.9, power: 4, scale: 1, time }); fx.decals.add(h.x, h.z, 1.6 + Math.random(), time); }
         dmg *= 0.7;
       }
       audio.hitFlesh();
@@ -215,7 +251,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
 
     state.heat = Math.min(1, state.heat + 0.0045);
     state.recoil = Math.min(1, state.recoil + 0.35);
-    look.state.flash = Math.min(0.22, look.state.flash + 0.05);
+    look.state.flash = Math.min(0.08, look.state.flash + 0.02);   // 화면 전체 번쩍임은 낮게 — 총구 불빛은 총구에 있어야 한다
     audio.shot();
     // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
@@ -241,15 +277,23 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 화염
     const firingNow = state.firing && state.spin > 0.55 && state.jammed <= 0;
     audio.setFiring(firingNow);
-    const fl = firingNow ? (0.6 + Math.random() * 0.8) : 0;
+    const fl = firingNow ? (0.85 + Math.random() * 0.3) : 0;   // 거리 전체가 깜빡이지 않게 진폭을 줄였다
     flash.scale.setScalar(fl * 1.8); flash.material.rotation = Math.random() * 6.3;
     flashWorld.scale.setScalar(fl * 1.1); flashWorld.material.rotation = flash.material.rotation;
-    flashLight.intensity = fl * 170;
+    flashLight.intensity = fl * 110;
     // 반동 감쇠
     state.recoil *= Math.exp(-dt * 12);
     // 조준 반영
+    // 조이스틱: 기울기 → 회전 속도(데드존 0.12, 지수 곡선 — 살짝 기울이면 정밀, 끝까지 밀면 휙 돈다)
+    if (state.stick.active) {
+      const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
+      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(state.stick.x) * 2.6 * dt, -1.5, 1.5);
+      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(state.stick.y) * 1.3 * dt, -0.62, state.pitchMax);
+    }
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
+    yawPivot.updateWorldMatrix(true, true);
+    aim();
     // 트레이서 수명
     updateTracers(time);
     updateBombs(dt, time);
@@ -263,17 +307,46 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
 
   // ── 입력 ──
-  function attachInput(el) {
-    let lastX = 0, lastY = 0, active = false;
+  // 터치(또는 ?stick=1): 떠다니는 조이스틱 — 아무 데나 누르면 그 자리에 스틱이 생기고, 기울인 만큼 포신이 돈다. 누르고 있는 동안 발사.
+  //   엄지가 반지름을 넘으면 밑판이 따라온다(끝까지 밀어도 손을 떼지 않는다). 두 번째 손가락(雷 버튼)은 스틱을 건드리지 않는다.
+  // 마우스: 드래그 상대 조준(예전 그대로), 우클릭 = 雷. Space 는 main 이 묶는다.
+  function attachInput(el, { stickEl = null, forceStick = false } = {}) {
+    let lastX = 0, lastY = 0, mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
+    const R = 54;
     const k = () => 2.6 / Math.max(320, innerWidth);
-    el.addEventListener('pointerdown', (e) => { active = true; lastX = e.clientX; lastY = e.clientY; state.firing = true; el.setPointerCapture?.(e.pointerId); });
+    const knob = stickEl?.firstElementChild;
+    const cap = (e) => { try { el.setPointerCapture(e.pointerId); } catch {} };   // 합성 이벤트(테스트)엔 활성 포인터가 없다
+    const showStick = (x, y) => { if (!stickEl) return; stickEl.classList.add('on'); stickEl.classList.remove('hint'); stickEl.style.left = `${x}px`; stickEl.style.top = `${y}px`; stickEl.style.bottom = 'auto'; };
+    const moveKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
+    const hideStick = () => { if (!stickEl) return; stickEl.classList.remove('on'); stickEl.classList.add('hint'); stickEl.style.cssText = ''; moveKnob(0, 0); };
+    if (stickEl && (forceStick || navigator.maxTouchPoints > 0)) stickEl.classList.add('hint');
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('pointerdown', (e) => {
+      if (forceStick || e.pointerType === 'touch') {
+        if (stickId !== -1) return;
+        stickId = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; state.stick.active = true; state.stick.x = 0; state.stick.y = 0; state.firing = true;
+        showStick(sx0, sy0); cap(e); return;
+      }
+      if (e.button === 2) { hooks.onBombKey?.(); return; }
+      mouseActive = true; lastX = e.clientX; lastY = e.clientY; state.firing = true; cap(e);
+    });
     el.addEventListener('pointermove', (e) => {
-      if (!active) return;
+      if (e.pointerId === stickId) {
+        let dx = e.clientX - sx0, dy = e.clientY - sy0; const len = Math.hypot(dx, dy);
+        if (len > R) { const over = len - R; sx0 += dx / len * over; sy0 += dy / len * over; dx *= R / len; dy *= R / len; showStick(sx0, sy0); }
+        state.stick.x = dx / R; state.stick.y = dy / R; moveKnob(dx, dy);
+        return;
+      }
+      if (!mouseActive) return;
       state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k(), -1.5, 1.5);
       state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8, -0.62, state.pitchMax);
       lastX = e.clientX; lastY = e.clientY;
     });
-    const stop = () => { active = false; state.firing = false; };
+    const stop = (e) => {
+      if (e.pointerId === stickId) { stickId = -1; state.stick.active = false; state.stick.x = state.stick.y = 0; hideStick(); }
+      else if (e.pointerType !== 'touch') mouseActive = false;
+      state.firing = stickId !== -1 || mouseActive;
+    };
     el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
   }
 
@@ -285,8 +358,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (state.bombs <= 0 || state.jammed > 0 && false) return false;
     state.bombs--;
     muzzle.getWorldPosition(_o); muzzle.getWorldDirection(_d); _d.negate();
-    const range = 34;
-    const tx = _o.x + _d.x * range, tz = _o.z + _d.z * range, T = 1.25, g = 16;
+    const range = THREE.MathUtils.clamp(state.aim.kind === 'none' ? 34 : state.aim.t, 9, 40);   // 조준 링 자리에 떨어진다
+    const tx = _o.x + _d.x * range, tz = _o.z + _d.z * range, T = 0.9 + range * 0.012, g = 16;
     const vel = { x: (tx - _o.x) / T, y: (0.5 - _o.y + 0.5 * g * T * T) / T, z: (tz - _o.z) / T };
     const { RAPIER, world } = physics;
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(_o.x, _o.y + 0.2, _o.z).setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: 6, y: 2, z: 4 }).setCcdEnabled(true));
@@ -308,7 +381,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         const R = 9;
         fx.shards.burst(t.x, 0.6, t.z, 40, { dirY: 1.0, spread: 1.6, power: 12, scale: 1.0, time });
         fx.blood.burst(t.x, 1.0, t.z, 30, { dirY: 0.8, spread: 1.6, power: 11, scale: 1.2, time });
-        fx.decals.add(t.x, t.z, 6, time);
+        fx.decals.add(t.x, t.z, 4.2, time);   // 핏자국 원반이 길을 다 덮으면 떼가 안 읽힌다
         look.state.flash = Math.max(look.state.flash, 0.8);
         audio.collapse(1.3); audio.thunder();
         blastBuildings(t.x, t.z, R * 0.8, time);

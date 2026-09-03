@@ -61,7 +61,19 @@ const ANIM_GLSL = /* glsl */`
   attribute float iHit;     // 피격 시각
   attribute float iType;    // 0 보통 1 거대 2 폭탄 3 질주
   uniform float uTime; uniform float uDead;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld;
+  uniform vec3 uAimO, uAimD; uniform float uAimT;   // 조준 광선(총구 원점·방향·첫 차단물까지 거리) — 광선 위에 선 좀비는 vMark=1 로 표시된다
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark;
+
+  // 인스턴스 자리(행렬 4열)와 광선의 xz 최근접점: 옆으로 반지름 안이고, 차단물보다 앞이면 '쏘면 맞는' 좀비. 시체(uDead)는 제외.
+  float aimMark() {
+    vec3 ip = (modelMatrix * instanceMatrix)[3].xyz; float isc = length(instanceMatrix[0].xyz);
+    vec2 d2 = uAimD.xz; float a = max(dot(d2, d2), 1e-4);
+    float along = dot(ip.xz - uAimO.xz, d2) / a;
+    float lat = length(uAimO.xz + d2 * along - ip.xz);
+    float yAt = uAimO.y + uAimD.y * along;
+    float hOk = step(-0.2, yAt) * step(yAt, 2.1 * isc);
+    return (1.0 - uDead) * step(0.0, along) * step(along, uAimT + 0.6) * (1.0 - smoothstep(0.55 * isc, 0.85 * isc, lat)) * hOk;
+  }
 
   vec3 rotX(vec3 p, vec3 piv, float a) { p -= piv; float c = cos(a), s = sin(a); return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z) + piv; }
   vec3 rotZ(vec3 p, vec3 piv, float a) { p -= piv; float c = cos(a), s = sin(a); return vec3(c*p.x - s*p.y, s*p.x + c*p.y, p.z) + piv; }
@@ -109,7 +121,7 @@ const ANIM_GLSL = /* glsl */`
 
 const BODY_VERT = ANIM_GLSL + /* glsl */`
   void main() {
-    vBone = aBone; vHit = iHit; vType = iType;
+    vBone = aBone; vHit = iHit; vType = iType; vMark = aimMark();
     vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
     float shred = exp(-(uTime - iHit) * 16.0) * (1.0 - uDead);
     p.xz += vec2(sin(uTime * 190.0 + position.y * 31.0), cos(uTime * 163.0 + position.x * 27.0)) * 0.06 * shred;
@@ -132,7 +144,7 @@ const BODY_FRAG = /* glsl */`
     vec3 v = normalize(cameraPosition - vWorld);
     float rim = pow(1.0 - max(0.0, dot(n, v)), 3.0);        // 프레넬 림 — 전열이 검은 덩어리가 아닌 '몸'으로 읽힌다(라이트 0)
     float hit = exp(-(uTime - vHit) * 14.0);
-    vec3 c = vec3(0.02) + top * 0.10 + rim * 0.28 + hit * 0.9;   // 피격 순간 실루엣이 종이처럼 하얘진다
+    vec3 c = vec3(0.02) + top * 0.10 + rim * 0.28 + hit * 0.65;   // 피격 순간 실루엣이 종이처럼 하얘진다(0.9→0.65: 떼 전체가 깜빡이는 소음을 줄임)
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -141,10 +153,11 @@ const BODY_FRAG = /* glsl */`
 const GLOW_FRAG = /* glsl */`
   precision highp float;
   uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark;
   void main() {
     float g = 0.0;
     vec3 col = uColor;
+    float camD = length(cameraPosition - vWorld);
     float eyeR = vType == 1.0 ? 0.085 : 0.06;
     if (vBone == 2.0) {
       // 눈: 머리 전면(+z) 두 점
@@ -162,11 +175,17 @@ const GLOW_FRAG = /* glsl */`
     }
     // 핏줄: 몸통·팔·다리 표면의 가느다란 줄무늬 (모델 공간 노이즈)
     float veins = sin(vModel.y * 38.0 + sin(vModel.x * 23.0 + vModel.z * 17.0) * 3.0 + uTime * 2.0);
-    veins = smoothstep(0.90, 0.99, veins);
+    veins = smoothstep(0.90, 0.99, veins) * (1.0 - smoothstep(26.0, 58.0, camD));   // 먼 좀비는 눈만 남은 실루엣 — 화면 뒤쪽이 반짝이지 않는다
     float pulse = 0.55 + 0.45 * sin(uTime * 3.0 + vModel.y * 2.0);
     if (vBone != 2.0) g += veins * 0.55 * pulse;
     float hit = exp(-(uTime - vHit) * 12.0);
     g += hit * 1.2;
+    // 조준선 위의 좀비: 호박색 림 — '지금 쏘면 이놈이 맞는다'
+    if (vMark > 0.01) {
+      vec3 n = normalize(vNormalW), v = normalize(cameraPosition - vWorld);
+      float rim = pow(1.0 - max(0.0, dot(n, v)), 1.6);
+      g += vMark * (0.5 + rim * 2.4); col = mix(col, vec3(1.0, 0.68, 0.25), vMark * 0.9);
+    }
     if (g < 0.02) discard;
     gl_FragColor = vec4(col * g, 1.0);
   }
@@ -192,7 +211,7 @@ export function createHorde(scene, physics, {
   const iType = new THREE.InstancedBufferAttribute(new Float32Array(N), 1);
   geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType);
 
-  const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) } };
+  const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
   const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms });
   const glowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
   const depthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms });
@@ -240,10 +259,12 @@ export function createHorde(scene, physics, {
   const rollType = () => { const r = Math.random(); return r < mix.brute ? 1 : r < mix.brute + mix.bomber ? 2 : r < mix.brute + mix.bomber + mix.runner ? 3 : 0; };
   const respawnAt = new Float32Array(N);
   const attackT = new Float32Array(N);   // 포대 앞 공격 타이머
+  const latched = new Float32Array(N);   // 마차에 붙어 있은 시간 — 가시에 꿰여 IMPALE 초 뒤 죽는다(붙은 놈은 두 번 긁고 끝)
+  const IMPALE = [2.2, 4.0, 2.2, 2.2];
   const stagger = new Float32Array(N);   // 피격 경직(초)
   const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
-  const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0 };
+  const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0, impaled: 0 };
   const hooks = { onExplode: null, onKill: null };
 
   function reset(i, time) {
@@ -255,7 +276,7 @@ export function createHorde(scene, physics, {
     hp[i] = THREE.MathUtils.lerp(T.hp[0], T.hp[1], Math.random());
     speed[i] = THREE.MathUtils.lerp(T.speed[0], T.speed[1], Math.random());   // 킹덤 좀비는 빠르다
     scale[i] = THREE.MathUtils.lerp(T.scale[0], T.scale[1], Math.random());
-    alive[i] = 1;
+    alive[i] = 1; latched[i] = 0;
     iPhase.setX(i, Math.random()); iSpeed.setX(i, speed[i] / (8 * scale[i])); iType.setX(i, ty);
     iSpeed.needsUpdate = true; iType.needsUpdate = true;
     respawnAt[i] = 0;
@@ -340,9 +361,10 @@ export function createHorde(scene, physics, {
       if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
         vx[i] *= 0.2; vz[i] *= 0.2;
         if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
-        attackT[i] += dt;
+        attackT[i] += dt; latched[i] += dt;
+        if (latched[i] > IMPALE[type[i]]) { const sx = Math.sign(px[i] - tx || 1); kill(i, sx * 0.9, -0.2, time, 5, 'impale'); continue; }
         if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
-      } else attackT[i] = 0.6; // 도착 0.4초 뒤 첫 공격
+      } else { attackT[i] = 0.6; latched[i] = Math.max(0, latched[i] - dt * 2); } // 도착 0.4초 뒤 첫 공격
       q.setFromAxisAngle(up, yaw[i]);
       s.setScalar(scale[i]);
       p.set(px[i], 0, pz[i]);
@@ -404,10 +426,11 @@ export function createHorde(scene, physics, {
     kill(i, dirX, dirZ, time, force);
     return true;
   }
-  function kill(i, dirX, dirZ, time, force = 9) {
+  function kill(i, dirX, dirZ, time, force = 9, cause = null) {
     if (!alive[i]) return;
     alive[i] = 0; stats.kills++;
-    hooks.onKill?.(type[i], px[i], pz[i], time);
+    hooks.onKill?.(type[i], px[i], pz[i], time, cause);
+    if (cause === 'impale') stats.impaled++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
