@@ -411,6 +411,10 @@ function updateCamera(dt, rawDt = dt) {
   camTarget.lerp(tmpV, Math.min(1, dt * Math.max(k, 12 * (k / 9))));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
+  // 카메라 감각(2026-09-03): 손떨림 수준의 미세 흔들림(위치만 — 시선은 커서가 정한다) + 폭발·충격 때 화각이 살짝 벌어진다
+  camera.position.x += Math.sin(game.time * 1.3) * 0.02; camera.position.y += Math.sin(game.time * 1.7 + 1.0) * 0.015;
+  const baseFov = innerWidth > innerHeight ? 34 : 48, fov = baseFov + Math.min(6, game.shake * 3.5);
+  if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   game.shake *= Math.exp(-dt * 4);
   // 하늘·달·산은 카메라에 붙어 다닌다
   sky.update(camera.position, game.time, renderer.getPixelRatio());

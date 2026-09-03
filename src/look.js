@@ -26,7 +26,7 @@ const BLUR = /* glsl */`
 const COMPOSITE = /* glsl */`
   precision highp float;
   uniform sampler2D tWorld, tSpot, tGlow, tDepth;
-  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt, edgeK, inkE;
+  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt, edgeK, inkE, aoK;
   varying vec2 vUv;
 
   float linDepth(vec2 uv) {
@@ -58,6 +58,17 @@ const COMPOSITE = /* glsl */`
     float ly = dot(texture2D(tWorld, vUv + vec2(0.0, texel.y)).rgb, vec3(0.2126, 0.7152, 0.0722)) - dot(texture2D(tWorld, vUv - vec2(0.0, texel.y)).rgb, vec3(0.2126, 0.7152, 0.0722));
     float detail = smoothstep(0.06, 0.22, abs(lx) + abs(ly)) * (1.0 - smoothstep(50.0, 160.0, d)) * (1.0 - edge);
     ink = mix(ink, ink * 0.4, detail * 0.65);
+    // 접지 AO(2026-09-03): 깊이 8탭 — 발밑·벽 모서리·처마 밑이 어두워져 물체가 땅에 붙는다. 반경은 월드 0.45 m 를 화면에 투영한 픽셀. ?ao=0..1
+    if (d < 200.0 && aoK > 0.001) {
+      float rad = clamp(0.45 / d / texel.y * 0.9, 2.0, 26.0);
+      float occ = 0.0, rot = hash(vUv * 913.0 + fract(time)) * 6.283;
+      for (int i = 0; i < 8; i++) {
+        float a = float(i) * 0.785 + rot; vec2 o = vec2(cos(a), sin(a)) * rad * texel * (0.5 + 0.5 * float(i & 1));
+        float ds = linDepth(vUv + o);
+        occ += step(ds, d - 0.12 - d * 0.008) * clamp(1.0 - (d - ds) / 4.0, 0.0, 1.0);
+      }
+      ink *= 1.0 - (occ / 8.0) * aoK * (1.0 - smoothstep(120.0, 200.0, d));
+    }
 
     // 비 줄무늬 (스크린 공간, 화면 위쪽에서 아래로)
     vec2 rp = vec2(vUv.x * 160.0, vUv.y * 14.0 + time * 14.0);
@@ -123,7 +134,7 @@ export function createLook(renderer, scene, camera) {
     uniforms: {
       tWorld: { value: rtWorld.texture }, tSpot: { value: rtSpot.texture }, tGlow: { value: rtGlowB.texture }, tDepth: { value: depth },
       texel: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, time: { value: 0 }, flash: { value: 0 },
-      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) }, inkE: { value: +(new URLSearchParams(location.search).get('ink') ?? 1.7) },   // ?edge=0..1 윤곽선 세기
+      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) }, inkE: { value: +(new URLSearchParams(location.search).get('ink') ?? 1.7) }, aoK: { value: +(new URLSearchParams(location.search).get('ao') ?? 0.55) },   // ?edge=0..1 윤곽선 세기
     },
   });
   // AA(2026-09-03): 세계·스팟 두 패스가 depth 를 공유하는 구조라 MSAA 를 못 쓴다(멀티샘플 RT 는 저마다 depth 버퍼를 갖는다) → 합성 결과에 FXAA 한 번. ?aa=0 으로 끈다
