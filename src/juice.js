@@ -16,17 +16,9 @@ const CSS = `
   #pops div { font: 300 14px/1.3 var(--mono); color:#e6c87a; animation: rise .9s ease-out forwards; }
   #pops div span { font-family: var(--serif); margin-left: 6px; opacity:.8; }
   @keyframes rise { 0% { opacity:0; transform: translateY(8px);} 15% { opacity:1;} 100% { opacity:0; transform: translateY(-22px);} }
-  #end .card { text-align:center; max-width: 86vw; }
-  #end .card h2 { margin:0 0 10px; font: 200 40px/1.15 var(--serif); color: var(--ink); letter-spacing:.02em; }
-  #end .card .score { font: 300 52px/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing:.02em; color: var(--ink); }
-  #end .card .score b { font: 200 44px/1 var(--serif); color: var(--red); margin-left: 14px; vertical-align: 6px; }
-  #end .card .rec { font: 300 10px/1 var(--mono); letter-spacing:.5em; color:#e6c87a; margin: 14px 0 22px; }
-  #end .card .rec.muted { color: rgba(233,230,223,.4); }
-  #end .stats { display:grid; grid-template-columns: repeat(4, auto); gap: 0 20px; margin: 0 0 22px; justify-content:center; }
-  #end .stats div { font: 300 9px/1 var(--serif); letter-spacing:.4em; opacity:.55; }
-  #end .stats div b { display:block; margin-bottom:8px; font: 300 22px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); letter-spacing:0; opacity:1; }
-  #end .stats div.red b { color: var(--red); }
-  #end .hs { margin: 0 auto 22px; font: 300 11px/1.9 var(--mono); letter-spacing:.12em; opacity:.8; text-align:left; display:inline-block; white-space:pre; }
+  /* 전적 DOM 은 아래쪽 띠만: 순위표 줄·이름 입력·버튼 셋·링크. 제목·점수·등급·통계는 씬 안의 판(cine.js) */
+  #end .card { text-align:center; max-width: 92vw; padding: 26px 30px calc(max(env(safe-area-inset-bottom), 18px) + 14px); background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.55) 30%); width:100%; box-sizing:border-box; }
+  #end .hs { margin: 0 auto 18px; font: 300 11px/1.9 var(--mono); letter-spacing:.12em; opacity:.8; text-align:left; display:inline-block; white-space:pre; }
   #end .hs div.me { color:#e6c87a; }
   #end .hs .hd { opacity:.5; letter-spacing:.4em; font-family: var(--serif); margin-bottom:2px; }
   #end .hs .rk { color:#e6c87a; margin-top:6px; }
@@ -34,10 +26,8 @@ const CSS = `
   #end .btns { display:flex; gap:26px; justify-content:center; pointer-events:auto; }
   #end button { font: 300 12px/1 var(--serif); letter-spacing:.3em; padding: 10px 2px; background:transparent; color: var(--ink); border:0; border-bottom: 1px solid rgba(233,230,223,.35); cursor:pointer; }
   #end button:first-child { border-bottom-color: var(--red); }
-  #end .hint { margin-top: 26px; font: 300 10px/1.8 var(--serif); letter-spacing:.2em; opacity:.4; }
-  #end .credits { margin-top: 22px; font: 300 10px/2 var(--mono); letter-spacing:.14em; opacity:.55; pointer-events:auto; }
+  #end .credits { margin-top: 16px; font: 300 10px/2 var(--mono); letter-spacing:.14em; opacity:.45; pointer-events:auto; }
   #end .credits a { color: #e6c87a; text-decoration:none; border-bottom: 1px solid rgba(230,200,122,.4); }
-  #end .credits .roll { font-family: var(--serif); letter-spacing:.3em; opacity:.8; margin-bottom: 4px; }
   #credit { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 16px); transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; white-space:nowrap; pointer-events:auto; }
   #credit a { color: inherit; text-decoration:none; }
   #best { position:absolute; left:50%; bottom: 13%; transform:translateX(-50%); font: 300 10px/1 var(--mono); letter-spacing:.3em; opacity:.45; white-space:nowrap; }
@@ -148,21 +138,11 @@ export function createJuice(hud) {
     const table = [...hs]; if (qualifies) table.splice(placed, 0, entry); table.length = Math.min(5, table.length);
     const rows = table.map((e, i) => `<div class="${e === entry ? 'me' : ''}">${i + 1}. ${e === entry ? '<input id="hsName" maxlength="3" placeholder="AAA" autocomplete="off" value="${lastName}">' : e.name.padEnd(3, ' ')}  ${String(e.score).padStart(7, '0')}  ${e.win ? S.dawnMark : '　　'}</div>`).join('');
     endEl.innerHTML = `<div class="card">
-      <h2>${st.win ? S.win : S.lose}</h2>
-      <div class="score">${String(st.score).padStart(7, '0')}<b>${st.rank}</b></div>
-      ${st.isRecord ? '<div class="rec">NEW HI-SCORE</div>' : `<div class="rec muted">${st.credits > 1 ? `CREDITS ${st.credits}` : `RANK ${placed + 1}`}</div>`}
-      <div class="stats">
-        <div class="red">${S.stKills}<b>${st.kills}</b></div><div>${S.stCombo}<b>${st.maxCombo}</b></div>
-        <div>${S.stAcc}<b>${Math.round(st.accuracy * 100)}%</b></div><div>${st.win ? S.stTime : S.stReach}<b>${st.win ? fmt(st.time) : `${st.reachedM}m`}</b></div>
-      </div>
       <div class="hs" id="hsBox">${rows}</div>
       <div class="btns"><button id="btnShare">${S.btnShare}</button><button id="btnPng">${S.btnPng}</button><button id="btnRetry">${S.btnRetry}</button></div>
-      <div class="hint">${S.hint(qualifies)}</div>
-      <div class="credits">${st.win ? `<div class="roll">${S.roll}</div>` : ''}<a href="https://x.com/midagedev" target="_blank" rel="noopener">@midagedev</a> · <a href="https://github.com/midagedev/kingdombi" target="_blank" rel="noopener">github.com/midagedev/kingdombi</a></div></div>`;
-    endEl.style.opacity = 1; endEl.style.pointerEvents = 'auto';
+      </div>`;   // 링크는 화면 맨 아래 상주 #credit 에 이미 있다 — 여기 또 두면 두 줄이 겹쳤다
     const stop = (e) => e.stopPropagation();
     for (const id of ['btnShare', 'btnPng', 'btnRetry']) endEl.querySelector('#' + id).addEventListener('pointerdown', stop);
-    for (const a of endEl.querySelectorAll('.credits a')) a.addEventListener('pointerdown', stop);
     const nameNow = () => { const inp = endEl.querySelector('#hsName'); const v = (inp?.value || lastName || 'AAA').toUpperCase().replace(/[^0-9A-Z가-힣]/g, ''); return (v || 'AAA').padEnd(3, 'A').slice(0, 3); };
     const saveHs = () => { const nm = nameNow(); localStorage.setItem('kb.name', nm); if (!qualifies) return; entry.name = nm; localStorage.setItem('kb.hs', JSON.stringify(table)); };
     // ── 온라인 순위표(Cloudflare Worker): 카드가 열리면 오늘 TOP5 + 역대 1위를 보여주고, 이름이 정해지면 한 번 올린다 ──
@@ -205,7 +185,6 @@ export function createJuice(hud) {
     endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); submit(); e.target.textContent = await share(st); });
     endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); submit(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : S.noFrame; });
     endEl.querySelector('#btnRetry').addEventListener('click', restart);
-    endEl.addEventListener('pointerdown', (e) => { if (!['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) restart(); });
   }
 
   return { stamp, banner, pop, onKill, update, endCard, mult, get maxCombo() { return maxCombo; } };

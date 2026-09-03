@@ -11,7 +11,8 @@ import { createPickups } from './pickups.js';
 import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
 import { createFires } from './fire.js';
-import { createJuice } from './juice.js';
+import { createJuice, rankOf } from './juice.js';
+import { createCine } from './cine.js';
 import { createSkills } from './skills.js';
 import { LANG, S, setLang } from './i18n.js';
 
@@ -109,9 +110,8 @@ hud.innerHTML = `
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
   <div id="stick"><i></i></div>
   <div id="ret"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round"><circle class="o" cx="50" cy="50" r="40"/><g class="spin"><circle cx="50" cy="50" r="29" stroke-dasharray="15 30.5"/></g><path class="t" d="M50 0v16M50 84v16M0 50h16M84 50h16"/><circle class="c" cx="50" cy="50" r="3.5"/></svg></div>
-  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">${S.titleLines(DAY, ROUTE.start - ROUTE.end, isMobile)}</div></div>
   <div id="lang"><span data-l="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</span><span data-l="en" class="${LANG === 'en' ? 'on' : ''}">EN</span><span id="calm" class="${CALM ? 'on' : ''}">${S.calm}</span></div>
-  <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">${S.contHint}</div></div>
+  <div id="cont"><button id="contEnd">${S.contEnd}</button></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
 style.textContent = `
@@ -151,7 +151,6 @@ style.textContent = `
   #hud { text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 6px rgba(0,0,0,.5); }
   /* iOS 사파리: 더블탭 확대·핀치 차단(touch-action 은 상속되지 않아 요소마다) */
   canvas, #hud, #hud * { touch-action: none; }
-  #title .t3 { max-width: 88vw; text-wrap: balance; }
   /* 폰(세로·좁은 화면): 라벨 크게, 바 두껍게, 雷 버튼 엄지 크기 */
   @media (max-width: 600px) {
     #score .lbl, #wave .lbl, #gauges .lbl { font-size: 12px; opacity: .8; }
@@ -163,20 +162,15 @@ style.textContent = `
     #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
     #ret { width: 78px; height: 78px; }
     #bomb { width: 76px; height: 76px; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 160px); } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
-    #title .t1 { font-size: 64px; } #title .t3 { font-size: 14px; line-height: 1.8; }
     #lang { font-size: 12px; }
   }
-  #title, #end, #cont { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background: rgba(0,0,0,.42); transition: opacity .7s; }
-  #end { background: rgba(0,0,0,.76); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-  #title .mark, #cont .mark { font: 300 11px/1 var(--mono); letter-spacing:.55em; opacity:.6; margin-bottom: 22px; }
-  #title .t1 { font: 200 84px/1 var(--serif); letter-spacing:.02em; color: var(--ink); }
-  #title .rule { width: 28px; height:1px; background: var(--red); margin: 26px 0 24px; }
-  #title .coin { font: 300 16px/1 var(--mono); letter-spacing:.5em; color:#e6c87a; margin-bottom: 26px; animation: blink 1.1s steps(2, start) infinite; }
-  @keyframes blink { to { visibility: hidden; } }
-  #title .t3, #cont .t3 { font: 300 13px/1.9 var(--serif); opacity:.7; letter-spacing:.06em; }
-  #cont { opacity:0; pointer-events:none; background: rgba(60,0,4,.55); }
-  #cont .n { font: 200 min(40vw, 220px)/1 var(--mono); color: var(--ink); margin: 0 0 18px; font-variant-numeric: tabular-nums; }
-  #end { opacity:0; pointer-events:none; }
+  /* 오프닝·컨티뉴·엔딩 글은 씬 안의 캔버스 판(cine.js). DOM 은 버튼·입력·순위표만 — 아래쪽 띠 */
+  #hud.title #score, #hud.title #wave, #hud.over #score, #hud.over #wave, #hud.over #gauges, #hud.over #bomb, #hud.over #stick, #hud.over #ret, #hud.over #combo, #hud.over #boss, #hud.over #pops, #hud.over #banner { opacity:0 !important; transition: opacity .6s; }
+  #cont { position:absolute; left:50%; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 64px); transform:translateX(-50%); opacity:0; pointer-events:none; transition: opacity .6s; }
+  #cont.on { opacity:1; pointer-events:auto; }
+  #cont button { font: 300 12px/1 var(--serif); letter-spacing:.4em; padding: 10px 6px; background:transparent; color: var(--ink); border:0; border-bottom: 1px solid rgba(233,230,223,.35); opacity:.6; cursor:pointer; }
+  #end { position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; align-items:center; opacity:0; pointer-events:none; transition: opacity .9s; }
+  #end.on { opacity:1; pointer-events:auto; }
   .hidden { opacity:0 !important; pointer-events:none !important; }
 `;
 document.head.appendChild(style);
@@ -278,6 +272,9 @@ function repairArmor(n) { game.hp = Math.min(100, game.hp + n); game.pendingDama
 
 const fires = createFires(scene);
 const juice = createJuice(hud);
+const cine = createCine(scene, camera, { isMobile });
+hud.classList.add('title'); cine.show('title');
+$('contEnd').addEventListener('pointerdown', (e) => { e.stopPropagation(); if (game.cont > 0) endGame(false); });
 const nightlife = createNightlife(scene, world.buildings, { playerZ: ROUTE.start, maxLights: 0 });   // 라이트 예산: 거리등 2 + 총구 + 화재 1
 const audio = createAudio();
 const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { camera, parent: vehicle.mount, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.center, sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); addScore(b.kind === 'palace' ? 20000 : 800, b.kind === 'palace' ? '宮' : '家'); } else addScore(50); } });
@@ -342,7 +339,7 @@ addEventListener('resize', resize); resize();
 function insertCoin() {
   game.started = true; game.credits = 1;
   audio.start(); audio.coin(); setTimeout(() => audio.setBgm('wave'), 700);
-  $('title').classList.add('hidden'); $('lang').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
+  cine.hide(); hud.classList.remove('title'); $('lang').classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
   if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z; director.district = districtAt(vpos.z); facing.a = 0; facing.chase = false; horde.chase = false; cullBuildings(); director.readyT = 0; }
@@ -351,7 +348,7 @@ function doContinue() {
   game.cont = 0; game.dying = 0; game.credits++;
   game.hp = 100; game.pendingDamage = 0; game.hpFx = 1;
   audio.coin(); audio.setBgm('wave');
-  contEl.style.opacity = 0; contEl.style.pointerEvents = 'none';
+  contEl.classList.remove('on'); cine.hide();
   // 부활 충격파: 마차 주변 좀비가 날아간다
   horde.crushNear(vpos.x, vpos.z, 14, game.time); shoveBodies(vpos.x, vpos.z, 14, 8, 8);
   look.state.flash = 1; look.state.invert = 1; juice.stamp('續'); juice.banner(`CREDIT ${game.credits}`, 1600);
@@ -359,7 +356,7 @@ function doContinue() {
 }
 canvas.addEventListener('pointerdown', () => {
   if (!game.started) insertCoin();
-  else if (game.over) location.reload();
+  else if (game.over) return;   // 전적을 읽는 중에 실수로 재시작되지 않게 — '다시' 버튼으로만
   else if (game.cont > 0) doContinue();
   else audio.start();
 }, { passive: true });
@@ -375,8 +372,21 @@ const cam = {
 // 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
 // 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
 const cull = { chaseFar: 120, chaseNear: 20, bossFar: 70, shadowFar: 70 };
-function updateCamera(dt) {
+let cineA = 0.9, cineT = -1;
+function updateCamera(dt, rawDt = dt) {
   const P = camera.aspect < 1;
+  // 오프닝·엔딩: 마차를 낮게 도는 히어로 샷. 엔딩은 조금 높고 느리게, 새벽이면 천천히 떠오른다. 하늘·달 추종은 아래 공통.
+  if (director.phase === 'title' || game.over) {
+    const first = cineT < 0; cineT = first ? 0 : cineT + rawDt; cineA += rawDt * (game.over ? 0.06 : 0.09);
+    const R = game.over ? 13 : 12, H = game.over ? (game.won ? 6 + Math.min(9, cineT * 0.55) : 5.5) : 4.4;
+    // 타이틀은 마차 위 4.6 m 를 본다 — 마차가 화면 아래 1/3 에 앉고 그 위 하늘·지붕선에 글이 놓인다(마차 중심을 보면 글이 마차 실루엣과 겹쳤다)
+    camPos.set(vpos.x + Math.sin(cineA) * R, vpos.y + H, vpos.z + Math.cos(cineA) * R); tmpV.set(vpos.x, vpos.y + (game.over ? 2.2 : 4.6), vpos.z);
+    if (first) { camera.position.copy(camPos); camTarget.copy(tmpV); } else { camera.position.lerp(camPos, Math.min(1, rawDt * 2)); camTarget.lerp(tmpV, Math.min(1, rawDt * 2)); }
+    camera.lookAt(camTarget);
+    sky.position.copy(camera.position); moonDisc.position.copy(camera.position).addScaledVector(moonDir, 520); moonDisc.lookAt(camera.position); halo.position.copy(camera.position).addScaledVector(moonDir, 517);
+    return;
+  }
+  const k = director.phase === 'ready' ? 2.2 : 9;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업
   const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
   const yaw = gun.state.yaw * 0.6;
@@ -387,9 +397,9 @@ function updateCamera(dt) {
   camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, C.h, C.d).applyAxisAngle(AXIS_Y, facing.a).add(camBase);
   const r = gun.state.recoil + game.shake;
   camPos.x += (Math.random() - 0.5) * r * 0.06; camPos.y += (Math.random() - 0.5) * r * 0.05;   // 반동 떨림 절반 — 화면이 아니라 총이 흔들려야 한다
-  camera.position.lerp(camPos, Math.min(1, dt * 9));
+  camera.position.lerp(camPos, Math.min(1, dt * k));
   tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).applyAxisAngle(AXIS_Y, facing.a).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
-  camTarget.lerp(tmpV, Math.min(1, dt * 12));
+  camTarget.lerp(tmpV, Math.min(1, dt * Math.max(k, 12 * (k / 9))));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
   game.shake *= Math.exp(-dt * 4);
@@ -504,7 +514,7 @@ function updateDirector(dt, time) {
   ground.position.z = vpos.z;
 }
 
-const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont'), contN = contEl.querySelector('.n');
+const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont');
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
 window.__kb = { cam, cull, cullBuildings, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, skills, juice, fps: 0 };
 cullBuildings(); followLights(0, ROUTE.start);
@@ -569,11 +579,13 @@ renderer.setAnimationLoop((now) => {
   } else {
     horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경·카드 선택 중)
     gun.state.firingPtr = false;
+    if (director.phase === 'title') { gun.state.yaw = Math.sin(now * 0.0004) * 0.7; gun.state.pitch = -0.05 + Math.sin(now * 0.0007) * 0.04; }   // 오프닝: 포신이 천천히 훑는다
     gun.update(dt, time);
     skills.update(0, time);
     vehicle.update(0);   // dt 0 — 카드 선택 중 drive 의 목표 속도(5 m/s)가 남아 있어 마차가 1.2초에 6 m 굴러갔다(실측 -150.1→-157.6)
   }
-  updateCamera(dt);
+  updateCamera(dt, rawDt);
+  cine.update(rawDt);
 
   // 천둥·번개: 한 번씩 세계를 하얗게 찢는다
   if (running && time > game.nextLightning) {
@@ -595,12 +607,11 @@ renderer.setAnimationLoop((now) => {
   fires.update(dt); juice.update(time);
 
   // 새벽: 恐龍을 쓰러뜨리면 밝아진다
-  if (running && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }
+  if ((running && time > game.dawnAt) || (game.over && game.won)) { look.state.darkness = Math.max(-0.6, look.state.darkness - rawDt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }   // 새벽은 엔딩 판 뒤에서도 계속 밝아진다
   if (running && time > game.dawnAt + 12) endGame(true);
-  // 사망 → 슬로우 → CONTINUE? 카운트다운(실시간 9초) → 종료
+  // 사망 → 슬로우 → CONTINUE?(카운트다운 없음, 2026-09-03 — 무료 웹에서 9초 재촉은 의미가 없었다. 누르면 계속, '그만' 버튼이면 종료)
   if (running && game.hp <= 0 && !game.dying && game.cont <= 0) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; audio.setBgm('death'); }
-  if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = 0; if (game.demo) endGame(false); else { game.cont = 9.99; contEl.style.opacity = 1; contEl.style.pointerEvents = 'auto'; } } }
-  if (game.cont > 0) { game.cont -= rawDt; contN.textContent = Math.max(0, Math.ceil(game.cont - 0.99)); if (game.cont <= 0) { game.cont = 0; contEl.style.opacity = 0; endGame(false); } }
+  if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = 0; if (game.demo) endGame(false); else { game.cont = 1; cine.show('cont'); contEl.classList.add('on'); } } }
 
   // 피격 붉은 테두리: 피해 풀이 빠지는 동안 켜져 있다(한 순간이 아니라 '지금 맞고 있다')
   look.state.hurt += (((started && game.pendingDamage > 0.2) ? Math.min(0.8, 0.3 + game.pendingDamage / 30) : 0) - look.state.hurt) * Math.min(1, rawDt * 8);
@@ -632,8 +643,8 @@ renderer.setAnimationLoop((now) => {
 
 function endGame(win) {
   if (game.over) return;
-  game.over = true;
-  contEl.style.opacity = 0; contEl.style.pointerEvents = 'none';
+  game.over = true; game.won = win; game.cont = 0; contEl.classList.remove('on'); cine.hide(); hud.classList.add('over'); cineT = -1;
   const st = { win, score: game.score, credits: game.credits, kills: horde.stats.kills, time: game.time, accuracy: gun.state.shots ? gun.state.hits / gun.state.shots : 0, razed: game.razed, reachedM: Math.max(0, Math.round(vpos.z - ROUTE.end)), day: DAY };
-  captureRequest = (blob) => juice.endCard($('end'), st, blob, () => location.reload(), { url: BOARD_URL, day: DAY, demo: game.demo });
+  st.rank = rankOf(st.score); st.maxCombo = juice.maxCombo;
+  captureRequest = (blob) => { juice.endCard($('end'), st, blob, () => location.reload(), { url: BOARD_URL, day: DAY, demo: game.demo }); cine.show('end', st); setTimeout(() => $('end').classList.add('on'), 1600); };
 }
