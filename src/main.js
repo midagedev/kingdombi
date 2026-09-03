@@ -423,7 +423,7 @@ renderer.setAnimationLoop((now) => {
   const dt = rawDt * game.timeScale;
   const started = game.started && !game.over;
   if (started) game.time += dt;
-  gun.state.showAim = started && game.cont <= 0;
+  gun.state.showAim = gun.state.live = started && game.cont <= 0;
   const time = game.time;
   look.state.invert *= Math.exp(-rawDt * 22);
 

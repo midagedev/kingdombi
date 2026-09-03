@@ -74,7 +74,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
+  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -292,15 +292,16 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 점착 조준: 조준선이 좀비·보스 위에 있으면 회전이 절반 가까이 느려진다(콘솔 슈터의 aim friction). 0.1초 보간으로 떨림 없음.
     const onTarget = state.aim.kind === 'zombie' || state.aim.kind === 'boss';
     stickyK += ((onTarget ? 0.55 : 1) - stickyK) * Math.min(1, rawDt * 10);
-    const kx = (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
-    const ky = (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
+    const kx = !state.live ? 0 : (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
+    const ky = !state.live ? 0 : (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
     const sx = state.stick.active ? state.stick.x : kx, sy = state.stick.active ? state.stick.y : ky;
     if (sx || sy) {
       const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
       state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * 2.6 * stickyK * rawDt, -1.5, 1.5);
       state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * 1.3 * stickyK * rawDt, -0.62, state.pitchMax);
     }
-    state.firing = state.firingPtr || keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight');
+    const kb = state.live && !state.stick.active;   // 키보드는 게임 중에만(타이틀·전적 카드에서 Shift/Enter 로 총이 돌면 안 된다)
+    state.firing = state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight')));
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     yawPivot.updateWorldMatrix(true, true);
@@ -335,7 +336,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
   function attachInput(el, { stickEl = null, forceStick = false } = {}) {
     let lastX = 0, lastY = 0, mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
-    addEventListener('keydown', (e) => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Enter', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); } });
+    addEventListener('keydown', (e) => { if (e.target?.tagName === 'INPUT') return; if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Enter', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); } });
     addEventListener('keyup', (e) => keys.delete(e.code)); addEventListener('blur', () => keys.clear());
     const R = 54;
     const k = () => 2.6 / Math.max(320, innerWidth);
