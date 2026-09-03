@@ -376,6 +376,7 @@ export function createHorde(scene, physics, {
     const hold = H.chase ? rail.speed : 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) {
+        if (relocate[i] && H.tailDrop) { relocate[i] = 0; respawnAt[i] = 0; }   // 꼬리(2026-09-04): 파 끝의 낙오 재배치는 한 놈씩 12초 동안 흘러 들어와 掃 를 막았다 — 화면 밖으로 벗어난 놈은 그냥 없어진다(시체도 없었다)
         // 보스전엔 budget 만큼만 되살린다 — 떼를 얇게 깔아 보스에 집중시킨다
         // 재배치(relocate)는 파 소환 수를 쓰지 않는다. 새 소환은 pool 이 남아 있고 페이스(spawnAcc)가 허락할 때만.
         if (respawnAt[i] && time > respawnAt[i] && stats.alive + revived < H.budget && (relocate[i] || (H.pool > 0 && spawnAcc >= 1))) { if (!relocate[i]) { H.pool--; spawnAcc--; } relocate[i] = 0; reset(i, time); revived++; }
@@ -385,7 +386,7 @@ export function createHorde(scene, physics, {
       // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
       const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
       // 추격 낙오 62 m(전 95): 못 따라오는 놈이 파를 끝내지 못하게 붙잡는다 — 재배치돼 14~55 m 뒤에서 다시 온다
-      if (H.chase ? (dzt > H.lagger || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+      if (H.chase ? (dzt > H.lagger || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = H.tailDrop ? 0 : 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // 지붕 위·낙하 중(2026-09-03): seek·분리·회피 없이 제 갈 길만 간다. 지붕 위에선 마차 쪽으로 기어가며 용마루(top−0.5)→처마(top·0.55) 로 내려오고, AABB(처마선) 를 넘으면 살짝 뛰어 떨어진다.
       let air = false; const rb = roofB[i];
@@ -412,7 +413,10 @@ export function createHorde(scene, physics, {
       let dx = tx - px[i], dz = tz - pz[i];
       const dist = Math.hypot(dx, dz) || 1;
       dx /= dist; dz /= dist;
-      const nearStop = dist < STOP_DIST + 1.5;
+      // 옆폭(2026-09-04): 세로 폰은 반화각 ≈10.5° 라 마차 뒤 10 m 에서 옆 4 m 부터 화면 밖이다 — 화면 밖에서 웅크려 덤벼드는 건 피할 수 없는 피해. seek 점의 옆폭(H.seekHalfW, main 이 세로면 2 m) 안에 들 때까진 멈추지 않고 계속 모여든다
+      const lat = Math.abs((px[i] - tx) * H.seekRight.x + (pz[i] - tz) * H.seekRight.z);
+      const inLane = lat < H.seekHalfW;
+      const nearStop = inLane && dist < STOP_DIST + 1.5;
       let ax = dx * (nearStop ? 0.15 : 1.0), az = dz * (nearStop ? 0.15 : 1.0);
       // 분리
       const cx = Math.floor(px[i] / CELL), cz = Math.floor(pz[i] / CELL);
@@ -447,7 +451,7 @@ export function createHorde(scene, physics, {
       vz[i] += ((az / al) * sp - vz[i]) * Math.min(1, dt * 6);
       px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
 
-      if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
+      if (inLane && dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
         // 추격전엔 마차 속도만큼만 따라 달린다 — 붙어서 긁되 파고들지는 않는다. 느린 놈은 못 따라와 처진다.
         if (hold > 0.2) { const h = Math.min(sp, hold); vx[i] = dx * h; vz[i] = dz * h; } else { vx[i] *= 0.2; vz[i] *= 0.2; }
         if (wind[i] === 0) { wind[i] = time; iWind.setX(i, time); }   // 웅크림 시작 — 셰이더가 붉게 달아오르며 몸을 낮춘다
@@ -613,6 +617,6 @@ export function createHorde(scene, physics, {
 
   // 파 시작: 앞으로 n 마리를 소환할 수 있다(pool). 죽어 있는 슬롯은 곧바로 나올 수 있게 예약 시각을 당긴다. 재배치 대기는 그대로.
   function startWave(n, time) { H.pool = n; for (let i = 0; i < N; i++) if (!alive[i] && !relocate[i]) respawnAt[i] = time + Math.random() * 0.4; }
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, lagger: 62, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, lagger: 62, tailDrop: false, seekHalfW: 99, seekRight: { x: 1, z: 0 }, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
   return H;
 }
