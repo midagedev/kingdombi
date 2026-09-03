@@ -414,61 +414,78 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
 
   // ── 雷 = 다연장로켓 일제사격(2026-09-03, 비격진천뢰 대체) ──
-  // 조선 위에 현대 무기라는 갭이 이 게임의 특징이다 — 시한 폭탄 한 알(구식)보다 로켓 비가 맞다. 포탑 뒤 12연장 포드에서 60 ms 간격으로 12발,
-  // 조준과 무관하게 **보는 쪽 앞마당 9~40 m 를 4줄 × 3열 격자**로 덮는다(먼 줄이 더 넓다 — 화면에서 먼 곳이 넓다). 가까운 줄부터 터져 폭발이 바깥으로 쓸려 나간다.
-  // 유도 없음 — 신기전(箭)과 문법이 다르다: 직선 포물선, 촘촘한 일제사, 강철 포드. 포드·격자가 gun.root 에 달려 있어 추격(π)·대치(0) 양쪽을 한 코드로 덮는다.
-  // 포드는 포탑 뒤·위(y 1.55) — 추격 카메라가 마차를 화면 밑단에 걸치므로 낮게 달면 안 보인다(y 0.62 는 NDC −1.14, 화면 밖 실측). 기둥 둘은 크랭크 회전 반경(0.51) 밖.
-  const pod = new THREE.Group(); pod.position.set(0, 1.55, 0.6); pod.rotation.x = 0.9; root.add(pod);
-  for (const sx of [-0.32, 0.32]) { const leg = box(0.09, 1.55, 0.09, IRON); leg.position.set(sx, 0.775, 0.62); root.add(leg); }
-  pod.add(box(1.0, 0.5, 0.72, IRON));
+  // 조선 위에 현대 무기라는 갭이 이 게임의 특징이다 — 시한 폭탄 한 알(구식)보다 로켓 비가 맞다.
+  // 문법(2026-09-03 2차): 포탑 위 20연장 포드에서 **수직으로** 쏘아 올린다 → 0.35초 뒤 바닥에 **록온 링 20개**가 줄줄이 찍힌다 → 로켓이 정점에서 그 링으로 **내리꽂힌다**.
+  // 궤적은 3차 베지어(P0 → 바로 위 H → 표적 바로 위 0.8H → 표적): 수직 이륙·수직 낙하. 조준과 무관하게 보는 쪽 앞마당 9~40 m 를 5줄 × 4열로 덮는다(첫 줄이 마차에 붙어 긁는 7~14 m 대).
+  // 유도 없음 — 신기전(箭)과 문법이 다르다. 포드·격자가 gun.root 에 달려 있어 추격(π)·대치(0) 양쪽을 한 코드로 덮는다.
+  const NT = 20, COLS = 4, ROWS = 5;
+  // 포드는 포탑 뒤·위(y 1.55) — 추격 카메라가 마차를 화면 밑단에 걸치므로 낮게 달면 안 보인다(y 0.62 는 NDC −1.14, 화면 밖 실측). 거의 수직(77°)으로 세운다. 기둥 둘은 크랭크 회전 반경(0.51) 밖.
+  const pod = new THREE.Group(); pod.position.set(0, 1.55, 0.8); pod.rotation.x = 1.35; root.add(pod);
+  for (const sx of [-0.32, 0.32]) { const leg = box(0.09, 1.55, 0.09, IRON); leg.position.set(sx, 0.775, 0.82); root.add(leg); }
+  pod.add(box(1.24, 0.66, 0.72, IRON));
   const tubeGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.8, 8); tubeGeo.rotateX(Math.PI / 2);
-  const tubes = new THREE.InstancedMesh(tubeGeo, new THREE.MeshStandardMaterial({ color: 0x0b0b0d, metalness: 0.8, roughness: 0.35 }), 12); tubes.castShadow = true; pod.add(tubes);
+  const tubes = new THREE.InstancedMesh(tubeGeo, new THREE.MeshStandardMaterial({ color: 0x0b0b0d, metalness: 0.8, roughness: 0.35 }), NT); tubes.castShadow = true; pod.add(tubes);
   const tubeLocal = [];   // 발사구(포드 로컬) — 로켓은 여기서 나온다
-  for (let k = 0; k < 12; k++) { const x = -0.36 + (k % 4) * 0.24, y = -0.16 + Math.floor(k / 4) * 0.16; _m.makeTranslation(x, y, 0); tubes.setMatrixAt(k, _m); tubeLocal.push(new THREE.Vector3(x, y, -0.42)); }   // 4열 × 3줄
-  // 윗면 장전등: 남은 일제사격 수만큼 줄이 호박색으로 켜진다(3회 = 3줄). 마차가 잉크 실루엣이라 포드는 이 불빛으로 읽힌다.
-  const readyDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb347 }), 12); readyDots.layers.set(LAYER_SPOT); pod.add(readyDots);
-  for (let k = 0; k < 12; k++) { _m.makeTranslation(-0.36 + (k % 4) * 0.24, 0.27, -0.2 + Math.floor(k / 4) * 0.2); readyDots.setMatrixAt(k, _m); }   // 윗면 — 카메라가 위에서 본다(뒷면은 장갑 바 밑에 깔렸다)
-  const MAXR = 24, RH = 10;   // 동시 비행 상한(연달아 두 번 눌러도 됨) · 리본 히스토리 점 수
+  const tubeX = (k) => -0.36 + (k % COLS) * 0.24, tubeY = (k) => -0.24 + Math.floor(k / COLS) * 0.12;
+  for (let k = 0; k < NT; k++) { _m.makeTranslation(tubeX(k), tubeY(k), 0); tubes.setMatrixAt(k, _m); tubeLocal.push(new THREE.Vector3(tubeX(k), tubeY(k), -0.42)); }   // 4열 × 5줄
+  // 윗면(카메라 쪽) 장전등: 남은 횟수 비율만큼 켜진다. 마차가 잉크 실루엣이라 포드는 이 불빛으로 읽힌다.
+  const readyDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb347 }), NT); readyDots.layers.set(LAYER_SPOT); pod.add(readyDots);
+  for (let k = 0; k < NT; k++) { _m.makeTranslation(tubeX(k), 0.36, -0.28 + Math.floor(k / COLS) * 0.14); readyDots.setMatrixAt(k, _m); }
+  const MAXR = 40, RH = 22;   // 동시 비행 상한(연달아 두 번) · 리본 히스토리 점 수(0.025초 간격 → 0.55초 꼬리)
   const rkGeo = new THREE.CylinderGeometry(0.045, 0.085, 1.05, 8); rkGeo.rotateX(Math.PI / 2);   // +z 가 머리(가늘다)
   const rockets = new THREE.InstancedMesh(rkGeo, new THREE.MeshStandardMaterial({ color: 0x2a2b30, metalness: 0.7, roughness: 0.4 }), MAXR); rockets.frustumCulled = false; rockets.castShadow = true; rockets.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(rockets);
-  const exhaust = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb347, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), MAXR); exhaust.layers.set(LAYER_SPOT); exhaust.frustumCulled = false; exhaust.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(exhaust);
-  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < MAXR; i++) { rockets.setMatrixAt(i, z); exhaust.setMatrixAt(i, z); } }   // r185: 인스턴스 기본 항등행렬 → 미사용 슬롯 0-스케일
-  // 연기 리본: 로켓당 RH 점 히스토리 링버퍼 → 단일 지오메트리. 신기전 리본보다 밝다 — 2초짜리 볼거리라 잠깐 가려도 된다.
-  const rib = { hist: new Float32Array(MAXR * RH * 3), n: new Uint8Array(MAXR), head: new Uint8Array(MAXR), last: new Float32Array(MAXR) };
+  const exhaust = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb347, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), MAXR); exhaust.layers.set(LAYER_SPOT); exhaust.frustumCulled = false; exhaust.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(exhaust);
+  // 록온 링: 표적 지점 바닥에 붉은 링 + 점. 깊이 무시(조준 링과 같은 문법) — 떼 속에서도 보인다. 로켓이 오르는 0.35초 뒤에 큰 링이 표적으로 '착' 조여진다.
+  const lockGeo = new THREE.RingGeometry(0.78, 0.98, 28); lockGeo.rotateX(-Math.PI / 2);
+  const lockMat = new THREE.MeshBasicMaterial({ color: 0xff4a3c, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const locks = new THREE.InstancedMesh(lockGeo, lockMat, MAXR); locks.layers.set(LAYER_SPOT); locks.frustumCulled = false; locks.renderOrder = 20; locks.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(locks);
+  const dotGeo = new THREE.RingGeometry(0.0, 0.16, 12); dotGeo.rotateX(-Math.PI / 2);
+  const lockDots = new THREE.InstancedMesh(dotGeo, lockMat, MAXR); lockDots.layers.set(LAYER_SPOT); lockDots.frustumCulled = false; lockDots.renderOrder = 20; lockDots.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(lockDots);
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < MAXR; i++) { rockets.setMatrixAt(i, z); exhaust.setMatrixAt(i, z); locks.setMatrixAt(i, z); lockDots.setMatrixAt(i, z); } }   // r185: 인스턴스 기본 항등행렬 → 미사용 슬롯 0-스케일
+  // 연기 리본: 로켓당 RH 점 히스토리 링버퍼 → 단일 지오메트리. 착탄 뒤 0.9초 동안 사라진다. 신기전 리본보다 밝고 넓다 — 3초짜리 볼거리라 잠깐 가려도 된다.
+  const rib = { hist: new Float32Array(MAXR * RH * 3), n: new Uint8Array(MAXR), head: new Uint8Array(MAXR), last: new Float32Array(MAXR), fade: new Float32Array(MAXR) };
   const ribGeo = new THREE.BufferGeometry(), ribPos = new Float32Array(MAXR * RH * 2 * 3), ribA = new Float32Array(MAXR * RH * 2);
   ribGeo.setAttribute('position', new THREE.BufferAttribute(ribPos, 3).setUsage(THREE.DynamicDrawUsage)); ribGeo.setAttribute('aAlpha', new THREE.BufferAttribute(ribA, 1).setUsage(THREE.DynamicDrawUsage));
   { const idx = []; for (let m = 0; m < MAXR; m++) for (let k = 0; k < RH - 1; k++) { const v = (m * RH + k) * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); } ribGeo.setIndex(idx); }
   const ribbon = new THREE.Mesh(ribGeo, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide,
     vertexShader: 'attribute float aAlpha; varying float vA; void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying float vA; void main(){ if (vA < 0.01) discard; gl_FragColor = vec4(vec3(0.62, 0.60, 0.56), vA * 0.55); }' })); ribbon.frustumCulled = false; scene.add(ribbon);
-  // 착탄 화구: 스팟 레이어 스프라이트(호박 → 흰), 0.3초에 2 → 12 m
-  const BURSTS = 8, bursts = [], burstBorn = new Float32Array(BURSTS).fill(-1e9); let burstCur = 0;
+    fragmentShader: 'varying float vA; void main(){ if (vA < 0.01) discard; gl_FragColor = vec4(vec3(0.70, 0.68, 0.64), vA * 0.62); }' })); ribbon.frustumCulled = false; scene.add(ribbon);
+  // 착탄 연출 3겹: 화구 스프라이트(호박 → 흰, 0.4초에 3 → 16 m) + 바닥 충격파 링(0.35초에 1 → 11 m) + 연기 뭉치(1.5초, 3 → 10 m 로 부풀며 오른다)
+  const BURSTS = 12, bursts = [], burstBorn = new Float32Array(BURSTS).fill(-1e9); let burstCur = 0;
   for (let i = 0; i < BURSTS; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, color: 0xffc070 })); sp.layers.set(LAYER_SPOT); sp.visible = false; scene.add(sp); bursts.push(sp); }
-  const rk = { on: new Uint8Array(MAXR), t0: new Float32Array(MAXR), T: new Float32Array(MAXR), h: new Float32Array(MAXR), a: new Float32Array(MAXR * 3), b: new Float32Array(MAXR * 3), k: new Uint8Array(MAXR) };
+  const SHOCKS = 12, shocks = [], shockBorn = new Float32Array(SHOCKS).fill(-1e9); let shockCur = 0;
+  { const g = new THREE.RingGeometry(0.85, 1.0, 40); g.rotateX(-Math.PI / 2); for (let i = 0; i < SHOCKS; i++) { const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); m.layers.set(LAYER_SPOT); m.visible = false; scene.add(m); shocks.push(m); } }
+  const smokeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 4, 32, 32, 30); r.addColorStop(0, 'rgba(255,255,255,0.9)'); r.addColorStop(0.5, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const SMOKES = 28, smokes = [], smokeBorn = new Float32Array(SMOKES).fill(-1e9); let smokeCur = 0;
+  for (let i = 0; i < SMOKES; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, depthWrite: false, transparent: true, color: 0x5e5b56 })); sp.visible = false; scene.add(sp); smokes.push(sp); }
+  // 슬롯 상태. 베지어 제어점 4개(a=발사구, c1=그 바로 위, c2=표적 바로 위, b=표적)
+  const rk = { on: new Uint8Array(MAXR), t0: new Float32Array(MAXR), T: new Float32Array(MAXR), a: new Float32Array(MAXR * 3), c1: new Float32Array(MAXR * 3), c2: new Float32Array(MAXR * 3), b: new Float32Array(MAXR * 3), k: new Uint8Array(MAXR) };
   const _rp = new THREE.Vector3(), _rd = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rs = new THREE.Vector3(), _rm = new THREE.Matrix4();
-  const GRID_D = [9, 17, 27, 40];   // 줄 거리. 첫 줄이 마차에 붙어 긁는 7~14 m 대를 덮어야 한다 — 멀리만 쓸면 화려하고 쓸모없다
+  const GRID_D = [9, 15, 22, 30, 40];   // 줄 거리. 첫 줄이 마차에 붙어 긁는 7~14 m 대를 덮어야 한다 — 멀리만 쓸면 화려하고 쓸모없다
+  const LOCK_AT = 0.35;   // 발사 뒤 이 시간에 록온 링이 찍힌다
   function fireSalvo(time) {
     if (state.bombs <= 0) return false;
     let free = 0; for (let j = 0; j < MAXR; j++) if (!rk.on[j]) free++;
-    if (free < 12) return false;   // 연타: 두 발째까지 공중(24슬롯)이면 세 번째는 발사하지 않는다 — 탄만 까이고 아무것도 안 나가는 일이 없게
+    if (free < NT) return false;   // 연타: 두 발째까지 공중(40슬롯)이면 세 번째는 발사하지 않는다 — 탄만 까이고 아무것도 안 나가는 일이 없게
     state.bombs--;
     pod.updateWorldMatrix(true, false);
-    let n = 0;
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
-      let i = -1; for (let j = 0; j < MAXR; j++) if (!rk.on[j]) { i = j; break; }
-      if (i < 0) break;
-      const k = r * 3 + c, d = GRID_D[r] + (Math.random() - 0.5) * 2.4, x = (c - 1) * (3.2 + d * 0.1) + (Math.random() - 0.5) * 2.4;   // 먼 줄 ±7 m — 길 안. 더 벌리면 길가 집이 매번 무너져 家 점수가 공짜로 쌓인다(실측 +4,000)
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      let i = -1; for (let j = 0; j < MAXR; j++) if (!rk.on[j] && rib.fade[j] === 0) { i = j; break; }
+      if (i < 0) for (let j = 0; j < MAXR; j++) if (!rk.on[j]) { i = j; break; }   // 사라지는 중인 리본 슬롯이라도 쓴다
+      const k = r * COLS + c, d = GRID_D[r] + (Math.random() - 0.5) * 2.4, x = (c - 1.5) * (2.2 + d * 0.07) + (Math.random() - 0.5) * 1.6;   // 먼 줄 ±7.5 m — 길 안(더 벌리면 길가 집이 매번 무너진다)
+      const H = 16 + d * 0.22;   // 정점 높이 18~25 m — 추격 카메라(9.5 m) 위로 솟아 화면을 나갔다가 내려온다
       _rp.copy(tubeLocal[k]); pod.localToWorld(_rp); rk.a[i * 3] = _rp.x; rk.a[i * 3 + 1] = _rp.y; rk.a[i * 3 + 2] = _rp.z;
+      rk.c1[i * 3] = _rp.x + (Math.random() - 0.5) * 3; rk.c1[i * 3 + 1] = _rp.y + H; rk.c1[i * 3 + 2] = _rp.z + (Math.random() - 0.5) * 3;
       _rp.set(x, 0, -d); root.localToWorld(_rp); rk.b[i * 3] = _rp.x; rk.b[i * 3 + 1] = 0.4; rk.b[i * 3 + 2] = _rp.z;
-      rk.on[i] = 1; rk.t0[i] = time + k * 0.06; rk.T[i] = 0.75 + d * 0.022; rk.h[i] = 5 + d * 0.18; rk.k[i] = k;
-      rib.n[i] = 0; rib.head[i] = 0; rib.last[i] = 0;
-      n++;
+      rk.c2[i * 3] = _rp.x; rk.c2[i * 3 + 1] = 0.4 + H * 0.8; rk.c2[i * 3 + 2] = _rp.z;
+      rk.on[i] = 1; rk.t0[i] = time + k * 0.045; rk.T[i] = 1.25 + d * 0.014; rk.k[i] = k;
+      rib.n[i] = 0; rib.head[i] = 0; rib.last[i] = 0; rib.fade[i] = 0;
     }
     state.recoil = Math.min(1, state.recoil + 0.5);
     hooks.onSalvo?.(time);
-    return n > 0;
+    return true;
   }
-  function writeRib(i) {
+  function writeRib(i, mul = 1) {
     const n = rib.n[i], base = i * RH;
     for (let k = 0; k < RH; k++) {
       const vi = (base + k) * 2;
@@ -477,50 +494,68 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       const o = (base + idx) * 3, o2 = (base + nb) * 3;
       const x = rib.hist[o], y = rib.hist[o + 1], z = rib.hist[o + 2];
       let sx = -(rib.hist[o2 + 2] - z), sz = rib.hist[o2] - x; const L = Math.hypot(sx, sz) || 1; sx /= L; sz /= L;
-      const f = k / (n - 1), w = 0.08 + 0.5 * (1 - f);   // 꼬리(0) 넓고 옅게 → 머리(1) 좁고 진하게
+      const f = k / (n - 1), w = (0.12 + 0.9 * (1 - f)) * (0.6 + 0.4 * mul);   // 꼬리(0) 넓고 옅게 → 머리(1) 좁고 진하게
       ribPos[vi * 3] = x + sx * w; ribPos[vi * 3 + 1] = y; ribPos[vi * 3 + 2] = z + sz * w; ribPos[vi * 3 + 3] = x - sx * w; ribPos[vi * 3 + 4] = y; ribPos[vi * 3 + 5] = z - sz * w;
-      ribA[vi] = ribA[vi + 1] = f * f;
+      ribA[vi] = ribA[vi + 1] = f * f * mul;
     }
+  }
+  function bez(i, u, out) {   // 3차 베지어 위치
+    const v = 1 - u, w0 = v * v * v, w1 = 3 * v * v * u, w2 = 3 * v * u * u, w3 = u * u * u, o = i * 3;
+    out.set(w0 * rk.a[o] + w1 * rk.c1[o] + w2 * rk.c2[o] + w3 * rk.b[o], w0 * rk.a[o + 1] + w1 * rk.c1[o + 1] + w2 * rk.c2[o + 1] + w3 * rk.b[o + 1], w0 * rk.a[o + 2] + w1 * rk.c1[o + 2] + w2 * rk.c2[o + 2] + w3 * rk.b[o + 2]);
+  }
+  function bezD(i, u, out) {   // 접선(방향)
+    const v = 1 - u, w0 = 3 * v * v, w1 = 6 * v * u, w2 = 3 * u * u, o = i * 3;
+    out.set(w0 * (rk.c1[o] - rk.a[o]) + w1 * (rk.c2[o] - rk.c1[o]) + w2 * (rk.b[o] - rk.c2[o]), w0 * (rk.c1[o + 1] - rk.a[o + 1]) + w1 * (rk.c2[o + 1] - rk.c1[o + 1]) + w2 * (rk.b[o + 1] - rk.c2[o + 1]), w0 * (rk.c1[o + 2] - rk.a[o + 2]) + w1 * (rk.c2[o + 2] - rk.c1[o + 2]) + w2 * (rk.b[o + 2] - rk.c2[o + 2])).normalize();
   }
   function updateRockets(dt, time) {
-    let any = false, ribDirty = false;
+    let any = false, ribDirty = false, lockDirty = false;
     for (let i = 0; i < MAXR; i++) {
-      if (!rk.on[i]) continue;
+      if (!rk.on[i]) {
+        if (rib.fade[i] > 0) { const m = 1 - (time - rib.fade[i]) / 0.9; if (m <= 0) { rib.fade[i] = 0; rib.n[i] = 0; writeRib(i, 0); } else writeRib(i, m); ribDirty = true; }
+        continue;
+      }
       any = true;
-      const u = (time - rk.t0[i]) / rk.T[i];
+      const el = time - rk.t0[i], u = el / rk.T[i];
       if (u < 0) continue;
-      const ax = rk.a[i * 3], ay = rk.a[i * 3 + 1], az = rk.a[i * 3 + 2], bx = rk.b[i * 3], by = rk.b[i * 3 + 1], bz = rk.b[i * 3 + 2];
       if (u >= 1) {
-        rk.on[i] = 0; rib.n[i] = 0; writeRib(i); ribDirty = true;
-        _rm.makeScale(0, 0, 0); rockets.setMatrixAt(i, _rm); exhaust.setMatrixAt(i, _rm);
-        rocketImpact(bx, bz, rk.k[i], time); continue;
+        rk.on[i] = 0; rib.fade[i] = time; writeRib(i, 1); ribDirty = true;
+        _rm.makeScale(0, 0, 0); rockets.setMatrixAt(i, _rm); exhaust.setMatrixAt(i, _rm); locks.setMatrixAt(i, _rm); lockDots.setMatrixAt(i, _rm); lockDirty = true;
+        rocketImpact(rk.b[i * 3], rk.b[i * 3 + 2], rk.k[i], time); continue;
       }
       if (rib.n[i] === 0) { audio.hitStone(); look.state.flash = Math.min(0.9, look.state.flash + 0.05); }   // 발사 순간(첫 프레임)
-      _rp.set(ax + (bx - ax) * u, ay + (by - ay) * u + rk.h[i] * 4 * u * (1 - u), az + (bz - az) * u);
-      _rd.set(bx - ax, by - ay + rk.h[i] * 4 * (1 - 2 * u), bz - az).normalize();
+      const ue = u < 0.5 ? u : 0.5 + (u - 0.5) * (1 + (u - 0.5) * 0.6);   // 내려올 때 조금 빨라진다(내리꽂힘)
+      bez(i, Math.min(1, ue), _rp); bezD(i, Math.min(1, ue), _rd);
       _rq.setFromUnitVectors(_fwd, _rd); _rs.set(1, 1, 1); _rm.compose(_rp, _rq, _rs); rockets.setMatrixAt(i, _rm);
-      _rp.addScaledVector(_rd, -0.62); _rs.setScalar(u < 0.15 ? 1.5 : 0.9); _rm.compose(_rp, _rq, _rs); exhaust.setMatrixAt(i, _rm);   // 꼬리 불: 발사 직후 크다
-      if (time - rib.last[i] > 0.03) { rib.last[i] = time; const hh = rib.head[i]; rib.hist[(i * RH + hh) * 3] = _rp.x; rib.hist[(i * RH + hh) * 3 + 1] = _rp.y; rib.hist[(i * RH + hh) * 3 + 2] = _rp.z; rib.head[i] = (hh + 1) % RH; if (rib.n[i] < RH) rib.n[i]++; }
+      _rp.addScaledVector(_rd, -0.62); _rs.setScalar(u < 0.12 ? 1.7 : 1.0); _rm.compose(_rp, _rq, _rs); exhaust.setMatrixAt(i, _rm);   // 꼬리 불: 이륙 직후 크다
+      if (time - rib.last[i] > 0.025) { rib.last[i] = time; const hh = rib.head[i]; rib.hist[(i * RH + hh) * 3] = _rp.x; rib.hist[(i * RH + hh) * 3 + 1] = _rp.y; rib.hist[(i * RH + hh) * 3 + 2] = _rp.z; rib.head[i] = (hh + 1) % RH; if (rib.n[i] < RH) rib.n[i]++; }
       writeRib(i); ribDirty = true;
+      // 록온 링: LOCK_AT 뒤에 크게 나타나 0.22초에 표적 크기로 조여지고, 착탄까지 살짝 숨 쉰다
+      const la = el - LOCK_AT;
+      if (la >= 0) { const sN = 1 + 1.8 * Math.max(0, 1 - la / 0.22), sP = sN * (1 + 0.05 * Math.sin(la * 16)); _rs.set(sP, 1, sP); _rp.set(rk.b[i * 3], 0.08, rk.b[i * 3 + 2]); _rq.identity(); _rm.compose(_rp, _rq, _rs); locks.setMatrixAt(i, _rm); _rs.set(1, 1, 1); _rm.compose(_rp, _rq, _rs); lockDots.setMatrixAt(i, _rm); lockDirty = true; }
     }
     if (any) { rockets.instanceMatrix.needsUpdate = true; exhaust.instanceMatrix.needsUpdate = true; }
-    readyDots.count = Math.min(12, Math.max(0, state.bombs) * 4);
+    if (lockDirty) { locks.instanceMatrix.needsUpdate = true; lockDots.instanceMatrix.needsUpdate = true; }
     if (ribDirty) { ribGeo.attributes.position.needsUpdate = true; ribGeo.attributes.aAlpha.needsUpdate = true; }
-    for (let i = 0; i < BURSTS; i++) { if (!bursts[i].visible) continue; const a = (time - burstBorn[i]) / 0.3; if (a > 1) { bursts[i].visible = false; continue; } bursts[i].scale.setScalar(2 + 10 * a); bursts[i].material.opacity = 1 - a; bursts[i].material.color.setRGB(1, 0.75 + 0.25 * a, 0.44 + 0.56 * a); }
+    readyDots.count = Math.min(NT, Math.round(Math.max(0, state.bombs) / Math.max(1, state.bombsMax) * NT));
+    for (let i = 0; i < BURSTS; i++) { if (!bursts[i].visible) continue; const a = (time - burstBorn[i]) / 0.4; if (a > 1) { bursts[i].visible = false; continue; } bursts[i].scale.setScalar(3 + 13 * a); bursts[i].material.opacity = 1 - a * a; bursts[i].material.color.setRGB(1, 0.75 + 0.25 * a, 0.44 + 0.56 * a); }
+    for (let i = 0; i < SHOCKS; i++) { if (!shocks[i].visible) continue; const a = (time - shockBorn[i]) / 0.35; if (a > 1) { shocks[i].visible = false; continue; } const sc = 1 + 10 * Math.sqrt(a); shocks[i].scale.set(sc, 1, sc); shocks[i].material.opacity = 1 - a; }
+    for (let i = 0; i < SMOKES; i++) { if (!smokes[i].visible) continue; const a = (time - smokeBorn[i]) / 1.5; if (a > 1) { smokes[i].visible = false; continue; } smokes[i].scale.setScalar(3 + 7 * a); smokes[i].position.y = 1.6 + 2.6 * a; smokes[i].material.opacity = 0.62 * (1 - a) * (1 - a); }
   }
-  // 착탄: 반경 7.5 m 좀비 즉사(main 의 onBlast), 건물은 좁게(3.5 m — 12발이 길을 통째로 밀어 버리지 않게), 보스 피해는 폭탄의 0.3배(12발 합이 폭탄 3.6개 분)
+  // 착탄: 반경 7.5 m 좀비 즉사(main 의 onBlast), 건물은 좁게(3.5 m — 20발이 길가 집을 통째로 밀어 버리지 않게), 보스 피해는 폭탄의 0.16배(20발 합이 폭탄 3.2개 분 — 실측 巨人 한 번에 ≈120)
   function rocketImpact(x, z, k, time) {
     const R = 7.5;
-    fx.shards.burst(x, 0.6, z, 16, { dirY: 1.0, spread: 1.6, power: 12, scale: 1.0, time });
-    fx.blood.burst(x, 1.0, z, 12, { dirY: 0.8, spread: 1.6, power: 11, scale: 1.2, time });
-    fx.gibs?.burst(x, 1.0, z, 8, { dirY: 0.9, spread: 1.5, power: 10, scale: 1.2, time });
-    fx.decals.add(x, z, 3.0, time);
-    const bi = burstCur; burstCur = (burstCur + 1) % BURSTS; bursts[bi].position.set(x, 1.6, z); bursts[bi].visible = true; burstBorn[bi] = time; bursts[bi].material.rotation = Math.random() * 6.3;
+    fx.shards.burst(x, 0.6, z, 20, { dirY: 1.0, spread: 1.6, power: 13, scale: 1.0, time });
+    fx.blood.burst(x, 1.0, z, 14, { dirY: 0.8, spread: 1.6, power: 11, scale: 1.2, time });
+    fx.gibs?.burst(x, 1.0, z, 10, { dirY: 0.9, spread: 1.5, power: 10, scale: 1.2, time });
+    fx.decals.add(x, z, 3.2, time);
+    const bi = burstCur; burstCur = (burstCur + 1) % BURSTS; bursts[bi].position.set(x, 1.8, z); bursts[bi].visible = true; burstBorn[bi] = time; bursts[bi].material.rotation = Math.random() * 6.3;
+    const si = shockCur; shockCur = (shockCur + 1) % SHOCKS; shocks[si].position.set(x, 0.12, z); shocks[si].visible = true; shockBorn[si] = time;
+    const mi = smokeCur; smokeCur = (smokeCur + 1) % SMOKES; smokes[mi].position.set(x + (Math.random() - 0.5) * 2, 1.6, z + (Math.random() - 0.5) * 2); smokes[mi].visible = true; smokeBorn[mi] = time; smokes[mi].material.rotation = Math.random() * 6.3;
     spark(x, 0.9, z, time);
-    look.state.flash = Math.min(0.9, look.state.flash + 0.22);
-    audio.collapse(0.9); if (k % 4 === 0) audio.thunder();   // 우레는 넉 발에 한 번 — 12번 겹치면 소음
+    look.state.flash = Math.min(0.9, look.state.flash + 0.28);
+    audio.collapse(1.0); if (k % 5 === 0) audio.thunder();   // 우레는 다섯 발에 한 번 — 20번 겹치면 소음
     blastBuildings(x, z, 3.5, time);
-    hooks.onBlast?.(x, z, R, time, 0.3);
+    hooks.onBlast?.(x, z, R, time, 0.16);
   }
   // 건물 하나를 통째로 무너뜨린다(보스가 쓰러지며 덮치는 궁궐 등)
   function razeBuilding(b, dirX, dirZ, time) { if (b.alive) { b.hp = 0; collapse(b, dirX, dirZ, time); } }

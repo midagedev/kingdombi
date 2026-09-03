@@ -295,7 +295,7 @@ gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, t
 // 雷 다연장로켓: 발사 순간 스탬프, 착탄마다(12발) 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판·본체 피해 × mul(로켓 0.3)
 gun.hooks.onSalvo = () => { juice.stamp('雷'); game.shake = Math.max(game.shake, 0.5); };
 gun.hooks.onBlast = (x, z, R, time, mul = 1) => {
-  game.shake = Math.max(game.shake, 0.8);
+  game.shake = Math.max(game.shake, 1.0);
   horde.crushNear(x, z, R, time);
   shoveBodies(x, z, R, 8, 8);
   const b = bosses.active;
