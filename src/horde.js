@@ -295,6 +295,7 @@ export function createHorde(scene, physics, {
   });
   // 레일 위 마차 근처(±90m) 장애물만 매 0.5초 골라 쓴다 — 길 전체 50채를 좀비 360마리가 매 프레임 훑지 않게
   let obstacles = allObstacles, obstacleZ = Infinity;
+  let prevTz = target.z;   // 표적의 z 속도(추격전 따라붙기)를 재기 위한 직전 값
 
   // 공간 해시(분리력)
   const CELL = 1.6, GRID = 64;
@@ -307,15 +308,22 @@ export function createHorde(scene, physics, {
     cellHead.fill(-1);
     for (let i = 0; i < N; i++) { if (!alive[i]) continue; const c = cellOf(px[i], pz[i]); next[i] = cellHead[c]; cellHead[c] = i; }
 
-    let aliveCount = 0;
+    let aliveCount = 0, revived = 0;
     const tx = target.x, tz = target.z;
+    // 표적(마차)이 달아나는 속도. 추격전에서 도달한 놈이 그냥 멈추면 마차가 그대로 빠져나가
+    // 영원히 아무도 닿지 못한다 — 속도를 맞춰 따라붙어야 물고 늘어진다.
+    const tvz = dt > 1e-5 ? Math.abs((tz - prevTz) / dt) : 0; prevTz = tz;
+    const hold = H.chase ? tvz : 0;
     for (let i = 0; i < N; i++) {
       if (!alive[i]) {
-        if (respawnAt[i] && time > respawnAt[i]) reset(i, time);
+        // 보스전엔 budget 만큼만 되살린다 — 떼를 얇게 깔아 보스에 집중시킨다
+        if (respawnAt[i] && time > respawnAt[i] && stats.alive + revived < H.budget) { reset(i, time); revived++; }
         else { m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       }
-      // 낙오: 마차 뒤로 45m 넘게 처지면 조용히 앞으로 재배치한다(시체 없이) — 떼는 항상 앞에 있어야 한다
-      if (pz[i] > target.z + 45) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+      // 낙오: 조준 범위 밖으로 벗어난 놈은 조용히 재배치한다(시체 없이) — 떼는 항상 총구 쪽에 있어야 한다
+      // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
+      const dzt = pz[i] - target.z;
+      if (H.chase ? (dzt > 95 || dzt < -25) : (dzt > 45)) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // seek
       let dx = tx - px[i], dz = tz - pz[i];
@@ -351,7 +359,7 @@ export function createHorde(scene, physics, {
       }
       const al = Math.hypot(ax, az) || 1;
       if (stagger[i] > 0) stagger[i] -= dt;
-      const sp = stagger[i] > 0 ? speed[i] * 0.15 : speed[i];
+      const sp = (stagger[i] > 0 ? speed[i] * 0.15 : speed[i]) * H.speedMul;   // 추격전엔 마차를 따라잡도록 배율을 올린다
       vx[i] += ((ax / al) * sp - vx[i]) * Math.min(1, dt * 6);
       vz[i] += ((az / al) * sp - vz[i]) * Math.min(1, dt * 6);
       px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
@@ -360,7 +368,8 @@ export function createHorde(scene, physics, {
       yaw[i] += dy * Math.min(1, dt * 10);
 
       if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
-        vx[i] *= 0.2; vz[i] *= 0.2;
+        // 추격전엔 마차 속도만큼만 따라 달린다 — 붙어서 긁되 파고들지는 않는다. 느린 놈은 못 따라와 처진다.
+        if (hold > 0.2) { const h = Math.min(sp, hold); vx[i] = dx * h; vz[i] = dz * h; } else { vx[i] *= 0.2; vz[i] *= 0.2; }
         if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
         attackT[i] += dt; latched[i] += dt;
         if (latched[i] > IMPALE[type[i]] * H.impaleMul) { const sx = Math.sign(px[i] - tx || 1); kill(i, sx * 0.9, -0.2, time, 5, 'impale'); continue; }
@@ -484,6 +493,20 @@ export function createHorde(scene, physics, {
     }
   }
 
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, mix, stats, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1 };
+  // 앞뒤 전환 순간, 반대편에 남은 놈들을 조용히 치운다(시체 없이) — 조준 범위 밖에서 장갑을 갉는 걸 막는다.
+  // sign +1 = 마차 뒤(z 큰 쪽), -1 = 마차 앞.
+  function recycleSide(sign, time) {
+    for (let i = 0; i < N; i++) { if (!alive[i]) continue; if ((pz[i] - target.z) * sign > 0) { alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.8; } }
+  }
+
+  // 정원(budget)까지 즉시 줄인다 — 먼 놈부터 조용히 치운다(보스 등장 섬광에 가려 사라진다).
+  function trimTo(n, time) {
+    let live = []; for (let i = 0; i < N; i++) if (alive[i]) live.push(i);
+    if (live.length <= n) return;
+    live.sort((a, b) => (Math.hypot(px[b] - target.x, pz[b] - target.z) - Math.hypot(px[a] - target.x, pz[a] - target.z)));
+    for (let k = 0; k < live.length - n; k++) { const i = live[k]; alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 1 + Math.random() * 3; }
+  }
+
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
   return H;
 }

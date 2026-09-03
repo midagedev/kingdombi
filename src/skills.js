@@ -169,7 +169,9 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
   const ribbon = new THREE.Mesh(ribGeo, new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
     vertexShader: 'attribute float aAlpha; varying float vA; void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying float vA; void main(){ if (vA < 0.01) discard; gl_FragColor = vec4(vec3(0.78, 0.76, 0.72), vA); }',
+    // 잉크 연기(어둡고 옅게). 밝은 흰 리본은 6발이 겹치면 조준선 위에 종이 장막을 쳐서 떼가 안 보였다 —
+    // 추격전에선 발사대가 바로 시선 방향이라 더 심하다.
+    fragmentShader: 'varying float vA; void main(){ if (vA < 0.01) discard; gl_FragColor = vec4(vec3(0.30, 0.29, 0.27), vA * 0.42); }',
   })); ribbon.frustumCulled = false; scene.add(ribbon);
   // 정점 링("팡"): 헤어핀 순간 스팟 레이어 링 스프라이트
   const ringTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 26, 0, 6.2832); g.stroke(); return new THREE.CanvasTexture(c); })();

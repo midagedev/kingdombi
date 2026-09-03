@@ -15,9 +15,9 @@ export const ROUTE = {
   palace: { x: 0, z: -520, tier: 'capital' },        // 58×90 → 남쪽 정문이 z≈-475 에서 광장을 본다
   temple: { x: -52, z: -338, y: 5, yaw: 0.4 },       // 두 번째 정차 지점 왼쪽 언덕
   stops: [
-    { z: -150, name: '시전 거리', sub: '장이 서던 곳', quota: 180, cap: 80, mix: { brute: 0.02, bomber: 0.08, runner: 0.22 } },
-    { z: -300, name: '절 문 앞', sub: '종이 울리지 않는다', quota: 260, cap: 100, mix: { brute: 0.06, bomber: 0.12, runner: 0.16 } },
-    { z: -450, name: '궁궐 광장', sub: '문이 열려 있다', quota: 380, cap: 130, mix: { brute: 0.08, bomber: 0.15, runner: 0.22 } },
+    { z: -150, name: '시전 거리', sub: '장이 서던 곳', boss: null, quota: 180, cap: 80, mix: { brute: 0.02, bomber: 0.08, runner: 0.22 } },
+    { z: -300, name: '절 문 앞', sub: '종이 울리지 않는다', boss: 'giant', quota: 260, cap: 100, mix: { brute: 0.06, bomber: 0.12, runner: 0.16 } },
+    { z: -450, name: '궁궐 광장', sub: '문이 열려 있다', boss: 'rex', quota: 380, cap: 130, mix: { brute: 0.08, bomber: 0.15, runner: 0.22 } },
   ],
   districts: [
     { z0: 0, z1: -150, name: '초가 마을', choga: 0.85, wall: 0.25, props: ['haystack', 'jangdokdae', 'well', 'jige', 'chicken-coop', 'brush-fence', 'mortar-pestle', 'straw-mat'], lane: ['haystack', 'jige', 'straw-mat'] },

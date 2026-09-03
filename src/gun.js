@@ -94,7 +94,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
+  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -319,14 +319,16 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const yawRate = THREE.MathUtils.clamp(30 / ad, 0.75, 2.6), pitchRate = 1.3 * THREE.MathUtils.clamp(12 / ad, 0.3, 1);
     const kx = !state.live ? 0 : (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
     const ky = !state.live ? 0 : (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
-    const sx = state.stick.active ? state.stick.x : kx, sy = state.stick.active ? state.stick.y : ky;
+    // state.live 가 스틱까지 막는다 — 타이틀·앞뒤 전환(flip) 중엔 포신이 돌지 않는다
+    const sx = !state.live ? 0 : (state.stick.active ? state.stick.x : kx), sy = !state.live ? 0 : (state.stick.active ? state.stick.y : ky);
     if (sx || sy) {
       const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
       state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * yawRate * rawDt, -1.5, 1.5);
       state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * pitchRate * rawDt, -0.62, state.pitchMax);
     }
     const kb = state.live && !state.stick.active;   // 키보드는 게임 중에만(타이틀·전적 카드에서 Shift/Enter 로 총이 돌면 안 된다)
-    state.firing = state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight')));
+    state.firing = state.live && (state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight'))));
+    root.rotation.y = state.facing;   // 포탑 전체가 보는 쪽(추격 π · 보스 0) — 광선·예광탄·조준 링이 월드 행렬을 따라 같이 돈다
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     yawPivot.updateWorldMatrix(true, true);
@@ -355,8 +357,12 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     _ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); _rc.setFromCamera(_ndc, camera);
     if (!_rc.ray.intersectPlane(_plane, _pt)) return;
     muzzle.getWorldPosition(_o);
-    const dx = _pt.x - _o.x, dz = _pt.z - _o.z; if (dz > -2) return;   // 마차 뒤·옆은 무시
-    state.yaw = THREE.MathUtils.clamp(Math.atan2(-dx, -dz), -1.5, 1.5);
+    const dx = _pt.x - _o.x, dz = _pt.z - _o.z;
+    // 조준각은 포탑이 보는 쪽(state.facing) 기준의 상대각이다 — 추격전(뒤를 봄)에도 같은 식이 쓰인다
+    let ty = Math.atan2(-dx, -dz) - (state.facing || 0);
+    ty = Math.atan2(Math.sin(ty), Math.cos(ty));
+    if (Math.abs(ty) > 1.5) return;   // 조준 범위 밖(등 뒤)은 무시
+    state.yaw = ty;
     state.pitch = THREE.MathUtils.clamp(Math.atan2(_pt.y - _o.y, Math.hypot(dx, dz)), -0.62, state.pitchMax);
   }
   function attachInput(el, { stickEl = null, forceStick = false } = {}) {

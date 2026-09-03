@@ -197,20 +197,28 @@ const vpos = vehicle.pos;   // 좀비 표적·스폰·카메라·조명이 모�
 const game = { started: false, over: false, paused: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: Infinity, timeScale: 1, hitstop: 0, shake: 0, razed: 0, bloodNight: false, dying: 0, cont: 0, credits: 0, score: 0, lastReached: 0, nextLightning: 6, hpFx: 0, god: q.has('god'), demo: q.has('demo') };
 
 // ── 연출자(director): 준비 → 달림 ↔ 정차 → 보스 → 새벽 ──
-const director = { phase: 'title', stopIdx: 0, stopKills0: 0, stopT0: 0, district: null, lastBlast: 0, lastCull: -1, readyT: 0, stateT: 0, ramming: false, demoBombT: 0 };
+const director = { phase: 'title', stopIdx: 0, stopKills0: 0, stopT0: 0, district: null, lastBlast: 0, lastCull: -1, readyT: 0, stateT: 0, ramming: false, demoBombT: 0, flipFrom: 0, flipTo: 0, flipNext: 'drive', driveSpeed: 5.0 };
+// ── 앞뒤 전환(facing): 게임은 두 얼굴이다 ──
+//   추격(π) — 마차가 달리고 떼가 뒤에서 쫓아온다. 카메라는 마차 앞쪽에서 뒤를 본다. 조준은 한 방향으로 모여 관통이 산다.
+//   대치(0) — 보스 앞에서 선다. 카메라가 마차를 축으로 180° 돌아 앞을 본다. 잡몹은 얇게 깔린다.
+// 카메라·포탑·스폰·컬링·등롱이 이 각 하나를 공유한다.
+const facing = { a: 0, chase: false };
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
 const spawn = {
-  // 달릴 땐 앞쪽 길가·골목에서 쏟아져 길로 모인다. 정차 땐 정면 + 양옆 골목(뒤에서는 절대 오지 않는다 — 조준 범위 밖).
+  // 추격: 뒤에서 쫓아온다(16~70m — 앞줄이 8~20m 에 붙어 있어야 쏘는 손이 쉬지 않는다).
+  // 대치: 정면 + 양옆 골목(등 뒤에서는 절대 오지 않는다 — 조준 범위 밖).
   pick() {
     const r = Math.random();
-    if (director.phase === 'drive' || director.phase === 'ready' || director.phase === 'title') {
-      if (r < 0.35) return { x: (Math.random() - 0.5) * 10, z: vpos.z - 95 - Math.random() * 60 };
-      return { x: (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 26), z: vpos.z - 55 - Math.random() * 70 };
+    if (facing.chase) {
+      if (r < 0.45) return { x: (Math.random() - 0.5) * 12, z: vpos.z + 20 + Math.random() * 50 };
+      return { x: (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 22), z: vpos.z + 14 + Math.random() * 56 };
     }
     if (r < 0.55) return { x: (Math.random() - 0.5) * 34, z: vpos.z - 45 - Math.random() * 55 };
     return { x: (Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 24), z: vpos.z - 30 + Math.random() * 42 };
   },
 };
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
+const BOSS_BUDGET = Math.round(zombieCount * 0.25);   // 대치 중엔 떼를 1/4 로 — 보스가 주인공이다
 const horde = createHorde(scene, physics, { count: zombieCount, spawn, target: vpos, buildings: world.buildings });
 horde.uniforms.uMoonDir.value.copy(moonDir);
 
@@ -272,7 +280,7 @@ const bosses = createBosses(scene, physics, {
       const palace = world.buildings.find((x) => x.kind === 'palace');
       setTimeout(() => { if (palace) gun.razeBuilding(palace, 0, -1, game.time); }, 900);
       director.phase = 'dawn'; game.dawnAt = time + 3; juice.banner(S.dawnComing, 4000);
-    } else { director.phase = 'clear'; director.stateT = 0; skills.offer('auto'); }
+    } else { director.phase = 'clear'; director.stateT = 0; }   // 잠깐 여운 → 자동 카드 → 다시 뒤를 보고 달린다
   },
 });
 const pickups = createPickups(scene, { vehicle, fx, audio, juice, onHeal: repairArmor, onScore: (n, g) => addScore(n, g, true) });
@@ -320,7 +328,7 @@ function insertCoin() {
   $('title').classList.add('hidden'); $('lang').classList.add('hidden'); $('best')?.classList.add('hidden'); $('credit')?.classList.add('hidden'); $('bomb').classList.add('on'); $('gauges').classList.remove('hidden');
   director.phase = 'ready'; director.readyT = 0; juice.banner('CREDIT 1 — READY', 1600);
   // 디버그: ?boss=giant|rex — 해당 정차 지점으로 순간이동해 곧바로 보스전
-  if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z + 0.5; director.stopKills0 = horde.stats.kills - ROUTE.stops[i].quota; director.district = districtAt(vpos.z); cullBuildings(); }
+  if (q.get('boss')) { const i = q.get('boss') === 'rex' ? 2 : 1; director.stopIdx = i; vpos.z = ROUTE.stops[i].z; director.district = districtAt(vpos.z); facing.a = 0; facing.chase = false; horde.chase = false; cullBuildings(); director.readyT = 0; }
 }
 function doContinue() {
   game.cont = 0; game.dying = 0; game.credits++;
@@ -342,16 +350,25 @@ canvas.addEventListener('pointerdown', () => {
 // ── 카메라: 마차 뒤 어깨 너머. 반동·마차 덜컹거림·보스 타격으로만 흔들린다 ──
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new THREE.Vector3(), camBase = new THREE.Vector3(), muzzleW = new THREE.Vector3(), aimW = new THREE.Vector3();
 // 세로(폰)는 화각이 좁아 마차·가시가 화면 아래로 잘렸다 — 더 뒤·위에서 내려다본다(줌아웃). window.__kb.cam 으로 라이브 튠.
-const cam = { land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 } };
+// 대치(보스)는 위에서 내려다보고, 추격은 낮게 깔아 마차를 화면 아래 1/3 에 두고 그 너머로 떼가 밀려온다.
+const cam = {
+  land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 },
+  chaseLand: { h: 9.5, d: 14.0, look: 30, drop: 3.4 }, chasePort: { h: 13, d: 18, look: 27, drop: 4.6 },
+};
 function updateCamera(dt) {
-  const C = camera.aspect < 1 ? cam.port : cam.land;
-  camBase.set(vpos.x, vpos.y + 3.2, vpos.z + 0.5);
+  const P = camera.aspect < 1;
+  const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
+  camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
   const yaw = gun.state.yaw * 0.6;
-  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, C.h, Math.cos(yaw) * C.d + Math.sin(yaw) * 1.8).add(camBase);   // 마차 전체(바퀴까지)가 아래에 보이도록 조금 더 뒤·위
+  // 조준 추종은 옆으로 1.8m 만 미끄러진다(궤도가 아니다 — 조준할 때마다 카메라가 돌면 멀미난다).
+  // 앞뒤 전환은 그 '완성된 오프셋'을 통째로 y축 회전시킨다. 식 안에 각을 더하면 중간(π/2)에서 반경이 무너져 마차로 줌인된다.
+  // 거리(C.d)는 고정하고 옆으로만 미끄러진다. 예전 식은 cos(yaw)·d 라 옆을 겨눌수록 카메라가 마차로 줌인돼,
+  // 추격 구도에선 마차가 화면 아래로 잘려 나갔다.
+  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, C.h, C.d).applyAxisAngle(AXIS_Y, facing.a).add(camBase);
   const r = gun.state.recoil + game.shake;
   camPos.x += (Math.random() - 0.5) * r * 0.06; camPos.y += (Math.random() - 0.5) * r * 0.05;   // 반동 떨림 절반 — 화면이 아니라 총이 흔들려야 한다
   camera.position.lerp(camPos, Math.min(1, dt * 9));
-  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
+  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).applyAxisAngle(AXIS_Y, facing.a).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
   camTarget.lerp(tmpV, Math.min(1, dt * 12));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
@@ -364,54 +381,76 @@ function updateCamera(dt) {
 
 // 마차 근처 건물만 그린다(랜드마크는 항상). 등롱은 nightlife 가 이 플래그를 따른다.
 function cullBuildings() {
-  for (const b of world.buildings) b.merged.visible = !!b.landmark || (b.center.z - vpos.z < 200 && b.center.z - vpos.z > -60);   // 앞 200m, 뒤 60m
+  // 보는 쪽으로 멀리, 등 뒤로 60m. 추격전은 뒤를 보므로 창이 통째로 뒤집힌다.
+  // 대치는 서서 코앞의 보스를 보므로 짧게 — 200m 를 세우면 드로우콜이 예산(≈1000)을 넘는다.
+  const s = facing.chase ? -1 : 1, far = facing.chase ? -170 : -70;
+  for (const b of world.buildings) { const d = (b.center.z - vpos.z) * s; b.merged.visible = !!b.landmark || (d < 60 && d > far); }
 }
 
+// 앞뒤 전환: 1.2초 동안 카메라가 마차를 축으로 돌고 그동안 조준은 잠긴다(gun.state.live).
+// 스폰 방향은 즉시 바뀌고, 반대편에 남은 놈들은 조용히 치운다 — 전환이 끝나면 떼는 이미 총구 쪽에 있다.
+function startFlip(to, then, time) {
+  director.flipFrom = facing.a; director.flipTo = to; director.flipThen = then;
+  director.phase = 'flip'; director.stateT = 0;
+  facing.chase = Math.abs(to) > 1; horde.chase = facing.chase;
+  horde.speedMul = facing.chase ? 1.22 : 1;   // 추격전은 마차가 달아나므로 떼가 조금 빨라야 붙는다
+  horde.recycleSide(facing.chase ? -1 : 1, time);
+}
+// 대치 진입: 마차가 서고 보스가 나온다. 잡몹은 얇게 깔린다(보스에 집중).
+function toBoss(time) {
+  const s = ROUTE.stops[director.stopIdx];
+  director.phase = 'boss'; director.stopT0 = time;
+  horde.budget = BOSS_BUDGET; horde.trimTo(BOSS_BUDGET, time); Object.assign(horde.mix, s.mix);
+  bosses.spawn(s.boss, vpos.x, vpos.z - (s.boss === 'rex' ? 40 : 48), time);
+  pickups.spawn(vpos.x + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), vpos.z - 12 - Math.random() * 6, 'stop');
+}
 function updateDirector(dt, time) {
   const stop = ROUTE.stops[director.stopIdx];
   if (director.phase === 'ready') {
     vehicle.state.targetSpeed = 0; director.readyT += dt;
-    if (director.readyT > 1.6) { director.phase = 'drive'; juice.banner('GO', 900); juice.stamp('進'); }
+    // 출발과 동시에 카메라가 돌아 뒤를 본다 — 마을이 쏟아낸 떼가 쫓기 시작한다
+    if (director.readyT > 1.6) {
+      if (q.get('boss')) toBoss(time);   // 디버그: 곧바로 대치(앞을 본 채로)
+      else { juice.banner('GO', 900); juice.stamp('進'); startFlip(Math.PI, () => { director.phase = 'drive'; }, time); }
+    }
+  } else if (director.phase === 'flip') {
+    vehicle.state.targetSpeed = director.flipTo === 0 ? 0 : director.driveSpeed;
+    director.stateT += dt;
+    const k = Math.min(1, director.stateT / 1.2), e = k * k * (3 - 2 * k);
+    facing.a = director.flipFrom + (director.flipTo - director.flipFrom) * e;
+    gun.state.yaw += (0 - gun.state.yaw) * Math.min(1, dt * 5);   // 포신을 정면으로 모아 놓고 넘긴다
+    if (k >= 1) { facing.a = director.flipTo; director.stateT = 0; cullBuildings(); director.flipThen(time); }
   } else if (director.phase === 'drive') {
-    // 정차 지점 앞에서 미리 감속(v²/2a ≈ 5 m) — 넘어가서 서면 恐龍이 문루 안에 서게 된다
-    const stop0 = ROUTE.stops[director.stopIdx];
-    vehicle.state.targetSpeed = stop0 && vpos.z <= stop0.z + (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) + 0.5 ? 0 : 7.5;
-    if (stop0 && vehicle.state.speed < 0.05 && vpos.z > stop0.z && vpos.z <= stop0.z + 6) vpos.z = stop0.z;   // 미세 오차는 그냥 맞춘다
+    // 보스 지점 앞에서만 미리 감속(v²/2a) — 넘어가서 서면 恐龍이 문루 안에 선다. 카드 지점은 서지 않고 지나간다.
+    const brake = stop && stop.boss && vpos.z <= stop.z + (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) + 0.5;
+    vehicle.state.targetSpeed = brake ? 0 : director.driveSpeed;
+    if (stop && stop.boss && vehicle.state.speed < 0.05 && vpos.z > stop.z && vpos.z <= stop.z + 6) vpos.z = stop.z;
     const d = districtAt(vpos.z);
     if (d !== director.district) { director.district = d; if (time > 3) juice.banner(S.place(d.name), 2600); }
     if (stop && vpos.z <= stop.z) {
-      director.phase = 'stop'; if (!q.get('boss')) director.stopKills0 = horde.stats.kills; director.stopT0 = time;
-      Object.assign(horde.mix, stop.mix); gun.state.bombs = gun.state.bombsMax;
-      pickups.spawn(vpos.x + (Math.random() - 0.5) * 14, vpos.z - 15 - Math.random() * 8, 'stop');
-      juice.banner(S.stage(director.stopIdx + 1, stop), 3400); juice.stamp('止'); audio.thunder();
-    }
-  } else if (director.phase === 'stop') {
-    vehicle.state.targetSpeed = 0;
-    const remaining = stop.quota - (horde.stats.kills - director.stopKills0);
-    if (remaining <= 0 || time - director.stopT0 > stop.cap) {
-      addScore(5000 + Math.max(0, Math.round((stop.cap - (time - director.stopT0)) * 60)), '段', true);
-      if (director.stopIdx === 0) { director.phase = 'clear'; director.stateT = 0; skills.offer('stat'); }
-      else if (director.stopIdx === 1) {
-        director.phase = 'boss';
-        bosses.spawn('giant', vpos.x, vpos.z - 48, time);
-        Object.assign(horde.mix, { brute: 0, bomber: 0.06, runner: 0.25 });
-        pickups.spawn(vpos.x + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), vpos.z - 12 - Math.random() * 6, 'stop');
-      } else {
-        // 恐龍 결전 직전 마지막 보강 — 고르는 동안 세계가 멈춘다
-        director.phase = 'pick';
-        skills.offer('any', () => {
-          director.phase = 'boss';
-          bosses.spawn('rex', vpos.x, vpos.z - 40, game.time);
-          Object.assign(horde.mix, { brute: 0, bomber: 0.06, runner: 0.25 });
-          pickups.spawn(vpos.x + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), vpos.z - 12 - Math.random() * 6, 'stop');
-        });
+      if (!stop.boss) {   // 시전 거리: 서지 않는다. 달리는 채로 한 장 고른다(고르는 동안 세계가 멈춘다).
+        director.stopIdx++; juice.banner(S.stage(1, stop), 3000); juice.stamp('補');
+        director.phase = 'pick'; skills.offer('stat', () => { director.phase = 'drive'; });
+      } else if (vehicle.state.speed < 0.05) {
+        juice.banner(S.stage(director.stopIdx + 1, stop), 3000); juice.stamp('止'); audio.thunder();
+        gun.state.bombs = gun.state.bombsMax;
+        // 恐龍 결전 직전에만 마지막 보강 한 장
+        if (stop.boss === 'rex') { director.phase = 'pick'; skills.offer('any', () => startFlip(0, toBoss, game.time)); }
+        else startFlip(0, toBoss, time);
       }
     }
-  } else if (director.phase === 'pick') { vehicle.state.targetSpeed = 0; }
-  else if (director.phase === 'boss') { vehicle.state.targetSpeed = 0; }
+  } else if (director.phase === 'pick' || director.phase === 'boss') { vehicle.state.targetSpeed = 0; }
   else if (director.phase === 'clear') {
     vehicle.state.targetSpeed = 0; director.stateT += dt;
-    if (director.stateT > 2.2) { director.phase = 'drive'; director.stopIdx++; juice.banner(S.roadOpen, 2200); juice.stamp('進'); gun.state.bombs = gun.state.bombsMax; }
+    // 巨人을 넘겼다: 자동 카드 한 장 → 다시 뒤를 보고 달린다
+    if (director.stateT > 2.2) {
+      director.phase = 'pick';
+      skills.offer('auto', () => {
+        director.stopIdx++; horde.budget = zombieCount; gun.state.bombs = gun.state.bombsMax;
+        juice.banner(S.roadOpen, 2200); juice.stamp('進');
+        startFlip(Math.PI, () => { director.phase = 'drive'; }, game.time);
+      });
+    }
   } else vehicle.state.targetSpeed = 0;
 
   vehicle.update(dt);
@@ -424,8 +463,11 @@ function updateDirector(dt, time) {
     if (time - director.lastBlast > 0.1) { director.lastBlast = time; gun.blastBuildings(vpos.x, vpos.z - 3.4, 2.4, time); }
   }
   if (Math.abs(vpos.z - director.lastCull) > 12) { director.lastCull = vpos.z; cullBuildings(); }
-  // 거리 등롱 개구리 뛰기
-  for (const l of lanterns) if (l.g.position.z > vpos.z + 30) l.g.position.z -= 110;
+  // 거리 등롱 개구리 뛰기 — 보는 쪽에 머물러야 한다. 추격전엔 마차 뒤(z 큰 쪽)가 화면이다.
+  for (const l of lanterns) {
+    if (facing.chase) { if (l.g.position.z - vpos.z > 110) l.g.position.z -= 110; }
+    else if (l.g.position.z > vpos.z + 30) l.g.position.z -= 110;
+  }
   followLights(vpos.x, vpos.z);
   ground.position.z = vpos.z;
 }
@@ -445,7 +487,8 @@ renderer.setAnimationLoop((now) => {
   const started = game.started && !game.over;
   const running = started && !game.paused;   // 카드 선택 중: 세계가 멈춘다
   if (running) game.time += dt;
-  gun.state.showAim = gun.state.live = running && game.cont <= 0;
+  gun.state.facing = facing.a;
+  gun.state.showAim = gun.state.live = running && game.cont <= 0 && director.phase !== 'flip';   // 앞뒤 전환 중엔 조준이 잠긴다
   const time = game.time;
   look.state.invert *= Math.exp(-rawDt * 22);
 
@@ -460,7 +503,8 @@ renderer.setAnimationLoop((now) => {
       const phase = (time % 16);
       if (phase < 12) {
         let best = -1, bestD = 1e9;
-        for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const dz = horde.pz[i] - vpos.z; if (dz > 2) continue; const d = Math.hypot(horde.px[i] - vpos.x, dz); if (d > 5 && d < bestD) { bestD = d; best = i; } }
+        // 총구가 보는 쪽에 있는 놈만 후보 — 추격전(뒤를 봄)에선 마차 뒤가 사냥터다
+        for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const dz = (horde.pz[i] - vpos.z) * (facing.chase ? -1 : 1); if (dz > 2) continue; const d = Math.hypot(horde.px[i] - vpos.x, dz); if (d > 5 && d < bestD) { bestD = d; best = i; } }
         if (best >= 0) tx = aimW.set(horde.px[best], 1.1, horde.pz[best]);
       } else {
         const ty = phase < 14 ? 0.62 : -0.6;
@@ -469,12 +513,13 @@ renderer.setAnimationLoop((now) => {
     }
     if (tx) {
       const dx = tx.x - muzzleW.x, dz = tx.z - muzzleW.z, dist = Math.hypot(dx, dz);
-      const ty = Math.atan2(-dx, -dz) + (bosses.active ? 0 : Math.sin(time * 2.1) * 0.06);
+      let ty = Math.atan2(-dx, -dz) - facing.a + (bosses.active ? 0 : Math.sin(time * 2.1) * 0.06);   // 조준각은 보는 쪽 기준의 상대각
+      ty = Math.atan2(Math.sin(ty), Math.cos(ty));
       const tp = Math.atan2(tx.y - muzzleW.y, dist);
       gun.state.yaw += (THREE.MathUtils.clamp(ty, -1.5, 1.5) - gun.state.yaw) * Math.min(1, dt * 6);
       gun.state.pitch += (THREE.MathUtils.clamp(tp, -0.62, gun.state.pitchMax) - gun.state.pitch) * Math.min(1, dt * 6);
     }
-    if ((director.phase === 'stop' || director.phase === 'boss') && time - director.demoBombT > 13 && gun.state.bombs > 0) { director.demoBombT = time; gun.throwBomb(time); }
+    if (director.phase === 'boss' && time - director.demoBombT > 13 && gun.state.bombs > 0) { director.demoBombT = time; gun.throwBomb(time); }
   }
   if (running) {
     updateDirector(dt, time);
@@ -548,8 +593,7 @@ renderer.setAnimationLoop((now) => {
   // 좌상단: 달릴 땐 궁궐까지 거리, 정차 땐 남은 처치 수, 보스전엔 BOSS
   if (game.started) {
     const stop = ROUTE.stops[director.stopIdx];
-    if (director.phase === 'stop' && stop) { waveEl.classList.add('stop'); waveN.textContent = Math.max(0, stop.quota - (horde.stats.kills - director.stopKills0)); waveL.textContent = S.place(stop.name); }
-    else if (director.phase === 'boss') { waveEl.classList.add('stop'); waveN.textContent = 'BOSS'; waveL.textContent = S.place(stop?.name ?? ''); }
+    if (director.phase === 'boss') { waveEl.classList.add('stop'); waveN.textContent = 'BOSS'; waveL.textContent = S.place(stop?.name ?? ''); }
     else { waveEl.classList.remove('stop'); waveN.textContent = `${Math.max(0, Math.round(vpos.z - ROUTE.end))} m`; waveL.textContent = director.phase === 'dawn' ? S.dawn : S.toPalace; }
   }
 });
