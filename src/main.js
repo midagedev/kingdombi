@@ -227,6 +227,9 @@ const spawn = {
     const r = Math.random();
     const s = sV(), o = { x: 0, z: 0 };
     if (facing.chase) {
+      // 코너 뒤 옆길(stub): 방금 지난 코너의 옛 방향 길에서 떼가 쏟아진다 — 카메라가 뒤를 보니 골목 입구가 화면 안이다
+      const g = path.segs.find((g) => g.s1 !== Infinity && s > g.s1 - 6 && s < g.s1 + 70);
+      if (g && r < 0.35) return path.atSeg(g, g.s1 + 8 + Math.random() * (ROUTE.stub - 10), (Math.random() - 0.5) * 10, o);
       if (r < 0.45) return path.at(s - 20 - Math.random() * 50, (Math.random() - 0.5) * 12, o);
       return path.at(s - 14 - Math.random() * 56, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 22), o);
     }
