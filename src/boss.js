@@ -2,7 +2,7 @@
 // 몸은 잉크 실루엣(어두운 표준 재질, 깊이 윤곽선이 형태를 그린다). 쇠판은 부위 체력이 있고 떨어지면 물리 파편이 된다.
 // QTE: 恐龍이 던지는 기와 덩어리에 조준선이 뜬다 — 떨어지기 전에 격추하면 점수, 놓치면 장갑 피해.
 import * as THREE from 'three';
-import { S } from './i18n.js';
+import { S as STR } from './i18n.js';
 import { LAYER_SPOT } from './look.js';
 
 const INK = () => new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.8 });   // 순흑이면 궁궐 배경과 한 덩어리 — 회색 잉크로 실루엣이 선다
@@ -100,7 +100,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       const kn = new THREE.Group(); kn.position.y = -0.46 * S; hip.add(kn); knees.push(kn);
       P(0.13, 0.46, 0.13, 0, -0.23, 0, kn);
     }
-    const b = makeBase(S.bossGiant, 1300, root); b.glyph = '巨人';
+    const b = makeBase(STR.bossGiant, 1300, root); b.glyph = '巨人';
     // 몸 부위(약한 피해)
     torso.traverse((m) => { if (m.isMesh && m.material === ink) b.addPart(m, 'body'); });
     // 쇠판
@@ -116,7 +116,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.addPart(coreDark, 'core');
     b.coreExposed = () => b.platesLeft() <= 2;
     b.coreGlow = core.material; b.aimCore = coreDark;
-    b.onPlateLost = () => { if (b.coreExposed()) juice.banner(S.chestOpen, 1800); };
+    b.onPlateLost = () => { if (b.coreExposed()) juice.banner(STR.chestOpen, 1800); };
     b.stopDist = 17; b.speed = 2.4; b.score = 15000;
     b.tick = (dt, time) => {
       const vp = vehicle.pos; const dz = vp.z - root.position.z;
@@ -191,7 +191,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       legs.push({ hip, knee, foot });
       const arm = P(0.3, 1.1, 0.3, sx * 1.3, -0.6, -2.6, hips); arm.rotation.x = -0.6;
     }
-    const b = makeBase(S.bossRex, 2400, root); b.glyph = '恐龍';
+    const b = makeBase(STR.bossRex, 2400, root); b.glyph = '恐龍';
     for (const m of [body, skull]) b.addPart(m, 'body');
     // 쇠판은 마차에서 보이는 면에: 가슴 정면 2 + 허벅지 정면 2(옆구리는 정면에서 몸통이 가려 못 맞힌다)
     const plates = [
@@ -207,7 +207,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     b.addPart(coreDark, 'core');
     b.coreExposed = () => b.platesLeft('skull') === 0;
     b.coreGlow = core.material; b.aimCore = coreDark;
-    b.onPlateLost = () => { if (b.coreExposed()) juice.banner(S.heartExposed, 2000); };
+    b.onPlateLost = () => { if (b.coreExposed()) juice.banner(STR.heartExposed, 2000); };
     b.score = 50000; b.holdDist = 20; b.minZ = z + 22;   // 궁궐 정문(-475) 앞에 서야 총알이 문루에 먹히지 않는다 — 스폰점보다 22m 앞(≈-468)까지만 물러난다
     b.tick = (dt, time) => {
       const vp = vehicle.pos; const dz = vp.z - root.position.z; const dist = Math.abs(dz);
@@ -264,7 +264,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     world.createCollider(RAPIER.ColliderDesc.cuboid(0.8, 0.55, 0.8).setDensity(300), body);
     const mesh = boxMesh(1.6, 1.1, 1.6, chunkMat); scene.add(mesh);
     qtes.push({ body, mesh, hp: 4, born: time, landed: false });
-    juice.banner(S.shootDown, 1200);
+    juice.banner(STR.shootDown, 1200);
   }
   function onBodyHit(body, x, y, z, time) {
     const q = qtes.find((q) => q.body.handle === body.handle); if (!q) return false;
@@ -302,8 +302,9 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     updateQtes(dt, time);
     if (!boss) return;
     boss.t += dt;
+    if (boss.alive && boss.hp <= 0) die(boss, time);   // 쇠판을 안 거친 피해(신기전·비격진천뢰 근접)도 여기서 죽는다
     if (boss.alive) {
-      if (boss.stagger > 0) { boss.stagger -= dt; boss.staggerPose?.(Math.max(0, boss.stagger) / 0.8); if (boss.state === 'wind' || boss.state === 'charge') { boss.state = boss.name.includes('巨') ? 'rest' : 'hold'; boss.stateT = 0; } }
+      if (boss.stagger > 0) { boss.stagger -= dt; boss.staggerPose?.(Math.max(0, boss.stagger) / 0.8); if (boss.state === 'wind' || boss.state === 'charge') { boss.state = boss.glyph === '巨人' ? 'rest' : 'hold'; boss.stateT = 0; } }
       boss.tick(dt, time); if (boss.stagger > 0) boss.staggerPose?.(Math.max(0, boss.stagger) / 0.8); boss.updateBoxes();
       // 움찔: 뿌리 회전을 잠깐 흔든다(총알이 박히는 게 몸으로 보인다)
       boss.root.rotation.z = (Math.random() - 0.5) * 0.05 * boss.flinch; boss.root.rotation.x = (Math.random() - 0.5) * 0.03 * boss.flinch;

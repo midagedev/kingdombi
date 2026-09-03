@@ -342,7 +342,7 @@ canvas.addEventListener('pointerdown', () => {
 // ── 카메라: 마차 뒤 어깨 너머. 반동·마차 덜컹거림·보스 타격으로만 흔들린다 ──
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new THREE.Vector3(), camBase = new THREE.Vector3(), muzzleW = new THREE.Vector3(), aimW = new THREE.Vector3();
 // 세로(폰)는 화각이 좁아 마차·가시가 화면 아래로 잘렸다 — 더 뒤·위에서 내려다본다(줌아웃). window.__kb.cam 으로 라이브 튠.
-const cam = { land: { h: 10.2, d: 14.0, look: 34, drop: 3.2 }, port: { h: 15, d: 20, look: 30, drop: 5 } };
+const cam = { land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 } };
 function updateCamera(dt) {
   const C = camera.aspect < 1 ? cam.port : cam.land;
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z + 0.5);

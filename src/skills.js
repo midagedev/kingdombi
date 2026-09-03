@@ -39,7 +39,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
     #pick .card:active { transform: scale(.96); } #pick .card.auto { border-color: #e6c87a; }
     #pick .card .g { font: 200 46px/1 var(--serif); color: var(--ink); } #pick .card.auto .g { color:#e6c87a; }
     #pick .card .n { margin-top: 10px; font: 300 13px/1.3 var(--serif); letter-spacing:.2em; color: var(--ink); }
-    #pick .card .d { margin-top: 8px; font: 300 11px/1.6 var(--serif); opacity:.7; }
+    #pick .card .d { margin-top: 8px; font: 300 11px/1.6 var(--serif); opacity:.7; word-break: keep-all; }
     #pick .card .k { margin-top: 10px; font: 300 10px/1 var(--mono); opacity:.4; }
     @media (max-width: 600px) { #pick .card { padding: 14px 8px 12px; } #pick .card .g { font-size: 38px; } #pick .card .n { font-size: 12px; } #pick .card .d { font-size: 10.5px; } }
   `; document.head.appendChild(style);
