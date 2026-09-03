@@ -246,6 +246,7 @@ export function createHorde(scene, physics, {
 
   // ── 상태 배열 ──
   const px = new Float32Array(N), pz = new Float32Array(N), vx = new Float32Array(N), vz = new Float32Array(N);
+  const py = new Float32Array(N), vy = new Float32Array(N), roofB = new Array(N).fill(null), roofT = new Float32Array(N);   // roofT: 용마루에 웅크려 있는 시간(초) — 실루엣이 하늘에 걸리는 순간   // 지붕 낙하(2026-09-03): 지붕 위 좀비는 roofB 에 집 레코드, 처마를 넘으면 null 이 되고 py>0 인 동안 낙하
   const yaw = new Float32Array(N), hp = new Float32Array(N), speed = new Float32Array(N), scale = new Float32Array(N);
   const alive = new Uint8Array(N);
   const type = new Uint8Array(N);
@@ -266,11 +267,12 @@ export function createHorde(scene, physics, {
   const STOP_DIST = 7.0;                  // 여기서 멈춰 공격한다 — 총열이 내려다볼 수 있는 거리
   const corpseScale = new Float32Array(CORPSE_POOL).fill(1);
   const stats = { kills: 0, reached: 0, alive: 0, reachDamage: 0, impaled: 0 };
-  const hooks = { onExplode: null, onKill: null };
+  const hooks = { onExplode: null, onKill: null, onLand: null };
 
   function reset(i, time) {
-    if (spawn.pick) { const s = spawn.pick(); px[i] = s.x; pz[i] = s.z; }
-    else { px[i] = spawn.x + (Math.random() - 0.5) * 2 * spawn.halfW; pz[i] = spawn.z - Math.random() * 30; }
+    if (spawn.pick) { const s = spawn.pick(); px[i] = s.x; pz[i] = s.z; roofB[i] = s.roof || null; py[i] = s.roof ? s.roof.bounds.max.y - 0.5 : 0; roofT[i] = s.roof ? 1.5 + Math.random() * 4.5 : 0; }
+    else { px[i] = spawn.x + (Math.random() - 0.5) * 2 * spawn.halfW; pz[i] = spawn.z - Math.random() * 30; roofB[i] = null; py[i] = 0; }
+    vy[i] = 0;
     vx[i] = 0; vz[i] = 0;
     yaw[i] = 0;
     const ty = rollType(); type[i] = ty; const T = TYPES[ty];
@@ -326,6 +328,27 @@ export function createHorde(scene, physics, {
       const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
       if (H.chase ? (dzt > 95 || dzt < -25) : (dzt > 45)) { alive[i] = 0; respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
+      // 지붕 위·낙하 중(2026-09-03): seek·분리·회피 없이 제 갈 길만 간다. 지붕 위에선 마차 쪽으로 기어가며 용마루(top−0.5)→처마(top·0.55) 로 내려오고, AABB(처마선) 를 넘으면 살짝 뛰어 떨어진다.
+      let air = false; const rb = roofB[i];
+      if (rb) {
+        air = true;
+        if (!rb.alive) { roofB[i] = null; vy[i] = 0; }   // 집이 무너졌다 — 그 자리서 떨어진다
+        else {
+          const hx = (rb.bounds.max.x - rb.bounds.min.x) / 2, hz = (rb.bounds.max.z - rb.bounds.min.z) / 2;
+          let dx = tx - px[i], dz = tz - pz[i]; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
+          roofT[i] -= dt; const sp = roofT[i] > 0 ? 0 : speed[i] * 0.35 * H.speedMul;   // 1.5~6초 웅크려 마차를 노려보다가 기어 나온다 — 실루엣이 하늘에 오래 걸리게
+          if (roofT[i] > 0) { yaw[i] = Math.atan2(dx, dz); }
+          vx[i] += (dx * sp - vx[i]) * Math.min(1, dt * 4); vz[i] += (dz * sp - vz[i]) * Math.min(1, dt * 4);
+          px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
+          const edge = Math.max(Math.abs(px[i] - rb.center.x) / hx, Math.abs(pz[i] - rb.center.z) / hz), top = rb.bounds.max.y;
+          py[i] = THREE.MathUtils.lerp(top - 0.5, top * 0.55, Math.pow(Math.min(1, edge), 1.4));
+          if (edge >= 1) { roofB[i] = null; vy[i] = 1.6; }
+        }
+      } else if (py[i] > 0) {
+        air = true; vy[i] -= 20 * dt; py[i] += vy[i] * dt; px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
+        if (py[i] <= 0) { py[i] = 0; vy[i] = 0; stagger[i] = 0.6; vx[i] *= 0.3; vz[i] *= 0.3; hooks.onLand?.(px[i], pz[i], time); }   // 착지: 0.6초 비틀거림
+      }
+      if (!air) {
       // seek
       let dx = tx - px[i], dz = tz - pz[i];
       const dist = Math.hypot(dx, dz) || 1;
@@ -364,9 +387,6 @@ export function createHorde(scene, physics, {
       vx[i] += ((ax / al) * sp - vx[i]) * Math.min(1, dt * 6);
       vz[i] += ((az / al) * sp - vz[i]) * Math.min(1, dt * 6);
       px[i] += vx[i] * dt; pz[i] += vz[i] * dt;
-      const ty = Math.atan2(vx[i], vz[i]);
-      let dy = ty - yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-      yaw[i] += dy * Math.min(1, dt * 10);
 
       if (dist < STOP_DIST + scale[i] * 0.5) { // 포대 앞 도달: 멈춰서 공격한다(쏴서 치울 시간을 준다)
         // 추격전엔 마차 속도만큼만 따라 달린다 — 붙어서 긁되 파고들지는 않는다. 느린 놈은 못 따라와 처진다.
@@ -380,9 +400,11 @@ export function createHorde(scene, physics, {
         }
         if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
       } else { attackT[i] = 0.6; latched[i] = Math.max(0, latched[i] - dt * 2); } // 도착 0.4초 뒤 첫 공격
+      }
+      { const ty = Math.atan2(vx[i], vz[i]); let dy = ty - yaw[i]; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); yaw[i] += dy * Math.min(1, dt * 10); }
       q.setFromAxisAngle(up, yaw[i]);
       s.setScalar(scale[i]);
-      p.set(px[i], 0, pz[i]);
+      p.set(px[i], py[i], pz[i]);
       m.compose(p, q, s);
       body.setMatrixAt(i, m);
     }
@@ -419,7 +441,7 @@ export function createHorde(scene, physics, {
       const t = (-b - Math.sqrt(disc)) / (2 * a);
       if (t < 0 || t > maxT) continue;
       const y = oy + dy * t;
-      if (y < -0.3 || y > h + 0.3) continue;
+      if (y < py[i] - 0.3 || y > py[i] + h + 0.3) continue;   // 지붕 위 놈은 그 높이에서 맞는다
       if (HB.n === maxHits && t >= HB.t[HB.n - 1]) continue;
       let k = Math.min(HB.n, maxHits - 1);
       while (k > 0 && HB.t[k - 1] > t) { HB.t[k] = HB.t[k - 1]; HB.i[k] = HB.i[k - 1]; k--; }
@@ -449,7 +471,7 @@ export function createHorde(scene, physics, {
     hooks.onKill?.(type[i], px[i], pz[i], time, cc);
     if (cc === 'impale') stats.impaled++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
-    const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
+    const c = physics.spawnCorpse({ x: px[i], y: py[i], z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);
@@ -514,6 +536,6 @@ export function createHorde(scene, physics, {
     for (let k = 0; k < live.length - n; k++) { const i = live[k]; alive[i] = 0; latched[i] = 0; respawnAt[i] = time + 1 + Math.random() * 3; }
   }
 
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, rail, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, mix, stats, rail, hooks, px, pz, py, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, chase: false, budget: N, speedMul: 1 };
   return H;
 }

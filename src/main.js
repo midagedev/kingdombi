@@ -230,6 +230,8 @@ const spawn = {
       // 코너 뒤 옆길(stub): 방금 지난 코너의 옛 방향 길에서 떼가 쏟아진다 — 카메라가 뒤를 보니 골목 입구가 화면 안이다
       const g = path.segs.find((g) => g.s1 !== Infinity && s > g.s1 - 6 && s < g.s1 + 70);
       if (g && r < 0.35) return path.atSeg(g, g.s1 + 8 + Math.random() * (ROUTE.stub - 10), (Math.random() - 0.5) * 10, o);
+      // 지붕(2026-09-03): 뒤 12~52 m 길가 집 지붕 위에 서서 처마로 기어 나와 떨어진다 — 실루엣이 하늘에 걸려 잘 읽힌다
+      if (r >= 0.35 && r < 0.55) { const hs = roofHouses(s - 52, s - 12); if (hs.length) { const b = hs[Math.floor(Math.random() * hs.length)], sz = b.bounds.getSize(roofSz); return { x: b.center.x + (Math.random() - 0.5) * sz.x * 0.3, z: b.center.z + (Math.random() - 0.5) * sz.z * 0.3, roof: b }; } }
       if (r < 0.45) return path.at(s - 20 - Math.random() * 50, (Math.random() - 0.5) * 12, o);
       return path.at(s - 14 - Math.random() * 56, (Math.random() < 0.5 ? -1 : 1) * (7 + Math.random() * 22), o);
     }
@@ -237,6 +239,8 @@ const spawn = {
     return path.at(s + 30 - Math.random() * 42, (Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 24), o);
   },
 };
+const roofSz = new THREE.Vector3();
+const roofHouses = (s0, s1) => world.buildings.filter((b) => (b.kind === 'choga' || b.kind === 'giwa') && b.alive && b.s > s0 && b.s < s1 && Math.abs(b.lat) < 20);
 const zombieCount = +(q.get('n') || (isMobile ? 260 : 360));
 const BOSS_BUDGET = Math.round(zombieCount * 0.25);   // 대치 중엔 떼를 1/4 로 — 보스가 주인공이다
 const horde = createHorde(scene, physics, { count: zombieCount, spawn, target: vpos, buildings: world.buildings, path });
