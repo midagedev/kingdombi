@@ -12,6 +12,7 @@ import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
 import { createFires } from './fire.js';
 import { createJuice } from './juice.js';
+import { createSkills } from './skills.js';
 import { LANG, S, setLang } from './i18n.js';
 
 const q = new URLSearchParams(location.search);
@@ -193,7 +194,7 @@ const fx = {
 const vehicle = createVehicle(scene, physics, { x: 0, z: ROUTE.start });
 const vpos = vehicle.pos;   // 좀비 표적·스폰·카메라·조명이 모두 이걸 따라간다
 
-const game = { started: false, over: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: Infinity, timeScale: 1, hitstop: 0, shake: 0, razed: 0, bloodNight: false, dying: 0, cont: 0, credits: 0, score: 0, lastReached: 0, nextLightning: 6, hpFx: 0, god: q.has('god'), demo: q.has('demo') };
+const game = { started: false, over: false, paused: false, hp: 100, pendingDamage: 0, time: 0, dawnAt: Infinity, timeScale: 1, hitstop: 0, shake: 0, razed: 0, bloodNight: false, dying: 0, cont: 0, credits: 0, score: 0, lastReached: 0, nextLightning: 6, hpFx: 0, god: q.has('god'), demo: q.has('demo') };
 
 // ── 연출자(director): 준비 → 달림 ↔ 정차 → 보스 → 새벽 ──
 const director = { phase: 'title', stopIdx: 0, stopKills0: 0, stopT0: 0, district: null, lastBlast: 0, lastCull: -1, readyT: 0, stateT: 0, ramming: false, demoBombT: 0 };
@@ -222,6 +223,7 @@ function addScore(n, glyph, noMult = false) {
 }
 horde.hooks.onKill = (type, x, z, time, cause) => {
   if (cause === 'impale') { addScore(30, null, true); fx.blood.burst(x, 1.1, z, 8, { dirX: (x - vpos.x) * 0.3, dirY: 0.5, spread: 0.9, power: 5, scale: 1, time }); return; }   // 가시에 꿰임: 헐값, 배율 없음(붙게 두는 게 이득이면 안 된다)
+  if (cause === 'auto') { addScore(Math.round(KILL_SCORE[type] * 0.5), null, true); return; }   // 스킬 자동공격: 절반 점수·배율 없음 — 직접 쏘는 게 늘 유리하다
   if (director.ramming) { addScore(30, null, true); return; }
   juice.onKill(time, horde.stats.kills);
   addScore(KILL_SCORE[type]);
@@ -270,11 +272,13 @@ const bosses = createBosses(scene, physics, {
       const palace = world.buildings.find((x) => x.kind === 'palace');
       setTimeout(() => { if (palace) gun.razeBuilding(palace, 0, -1, game.time); }, 900);
       director.phase = 'dawn'; game.dawnAt = time + 3; juice.banner(S.dawnComing, 4000);
-    } else { director.phase = 'clear'; director.stateT = 0; }
+    } else { director.phase = 'clear'; director.stateT = 0; skills.offer('auto'); }
   },
 });
 const pickups = createPickups(scene, { vehicle, fx, audio, juice, onHeal: repairArmor, onScore: (n, g) => addScore(n, g, true) });
 gun.targets.push(pickups);
+// 스킬(뱀서류 보강): 정차 전환 3번 카드 선택. 자동공격 카드는 巨人 뒤부터 — 초반 클립은 개틀링이主体다
+const skills = createSkills(scene, { horde, gun, vehicle, fx, audio, look, juice, game, hud, camera, pickups, bosses, onScore: (n, g) => addScore(n, g, true), isDemo: game.demo });
 // 차선 위 수리 상자: 70m 마다 하나(정차 지점 근처 제외). 정차·보스전엔 앞쪽에 하나 더 떨어진다(쏘면 열린다).
 for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + dayRand() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((dayRand() - 0.5) * 5, z, 'lane');
 gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, time);
@@ -291,7 +295,7 @@ gun.hooks.onBlast = (x, z, R, time) => {
   }
   const dv = Math.hypot(vpos.x - x, vpos.z - z); if (dv < R) damageArmor(10 * (1 - dv / R));
 };
-const bombNow = () => { if (game.started && !game.over && game.cont <= 0) gun.throwBomb(game.time); };
+const bombNow = () => { if (game.started && !game.over && game.cont <= 0 && !game.paused) gun.throwBomb(game.time); };
 $('bomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); bombNow(); });
 gun.hooks.onBombKey = bombNow;
 addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); bombNow(); } });
@@ -386,15 +390,25 @@ function updateDirector(dt, time) {
     const remaining = stop.quota - (horde.stats.kills - director.stopKills0);
     if (remaining <= 0 || time - director.stopT0 > stop.cap) {
       addScore(5000 + Math.max(0, Math.round((stop.cap - (time - director.stopT0)) * 60)), '段', true);
-      if (director.stopIdx === 0) { director.phase = 'clear'; director.stateT = 0; }
-      else {
+      if (director.stopIdx === 0) { director.phase = 'clear'; director.stateT = 0; skills.offer('stat'); }
+      else if (director.stopIdx === 1) {
         director.phase = 'boss';
-        bosses.spawn(director.stopIdx === 1 ? 'giant' : 'rex', vpos.x, vpos.z - (director.stopIdx === 1 ? 48 : 40), time);
+        bosses.spawn('giant', vpos.x, vpos.z - 48, time);
         Object.assign(horde.mix, { brute: 0, bomber: 0.06, runner: 0.25 });
         pickups.spawn(vpos.x + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), vpos.z - 12 - Math.random() * 6, 'stop');
+      } else {
+        // 恐龍 결전 직전 마지막 보강 — 고르는 동안 세계가 멈춘다
+        director.phase = 'pick';
+        skills.offer('any', () => {
+          director.phase = 'boss';
+          bosses.spawn('rex', vpos.x, vpos.z - 40, game.time);
+          Object.assign(horde.mix, { brute: 0, bomber: 0.06, runner: 0.25 });
+          pickups.spawn(vpos.x + (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6), vpos.z - 12 - Math.random() * 6, 'stop');
+        });
       }
     }
-  } else if (director.phase === 'boss') { vehicle.state.targetSpeed = 0; }
+  } else if (director.phase === 'pick') { vehicle.state.targetSpeed = 0; }
+  else if (director.phase === 'boss') { vehicle.state.targetSpeed = 0; }
   else if (director.phase === 'clear') {
     vehicle.state.targetSpeed = 0; director.stateT += dt;
     if (director.stateT > 2.2) { director.phase = 'drive'; director.stopIdx++; juice.banner(S.roadOpen, 2200); juice.stamp('進'); gun.state.bombs = gun.state.bombsMax; }
@@ -418,7 +432,7 @@ function updateDirector(dt, time) {
 
 const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont'), contN = contEl.querySelector('.n');
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
-window.__kb = { cam, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, juice, fps: 0 };
+window.__kb = { cam, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, skills, juice, fps: 0 };
 cullBuildings(); followLights(0, ROUTE.start);
 $('gauges').classList.add('hidden');   // 타이틀에선 장갑 게이지 대신 크레딧이 그 자리에 있다
 
@@ -429,13 +443,14 @@ renderer.setAnimationLoop((now) => {
   if (game.hitstop > 0) { game.hitstop -= rawDt; game.timeScale = 0.16; } else if (game.cont > 0) { game.timeScale = 0.04; } else if (game.dying > 0) { game.timeScale = 0.2; } else game.timeScale = 1;
   const dt = rawDt * game.timeScale;
   const started = game.started && !game.over;
-  if (started) game.time += dt;
-  gun.state.showAim = gun.state.live = started && game.cont <= 0;
+  const running = started && !game.paused;   // 카드 선택 중: 세계가 멈춘다
+  if (running) game.time += dt;
+  gun.state.showAim = gun.state.live = running && game.cont <= 0;
   const time = game.time;
   look.state.invert *= Math.exp(-rawDt * 22);
 
   const reachedBefore = game.lastReached;
-  if (started && game.demo) {
+  if (running && game.demo) {
     // 자동 데모: 보스가 있으면 약점(노출 코어 > 쇠판 > QTE 덩어리), 아니면 가장 가까운 좀비를 겨눈 채 훑는다 (클립 녹화용)
     gun.state.firingPtr = game.cont <= 0 && !q.has('nofire');   // gun.update 가 firing 을 포인터·키 상태에서 다시 계산하므로 포인터 쪽을 흉내낸다   // ?nofire=1: 조준만 하고 쏘지 않는다(보스 스크린샷용)
     gun.muzzle.getWorldPosition(muzzleW);
@@ -461,11 +476,12 @@ renderer.setAnimationLoop((now) => {
     }
     if ((director.phase === 'stop' || director.phase === 'boss') && time - director.demoBombT > 13 && gun.state.bombs > 0) { director.demoBombT = time; gun.throwBomb(time); }
   }
-  if (started) {
+  if (running) {
     updateDirector(dt, time);
     horde.update(dt, time);
     bosses.update(dt, time);
     pickups.update(dt, time);
+    skills.update(dt, time);
     // 장갑 피해는 풀에 쌓아 초당 9 까지만 빠진다 — 떼가 한꺼번에 붙어도 최소 11초는 버티며 쏴 낼 수 있다
     if (horde.stats.reached > reachedBefore) { game.pendingDamage += horde.stats.reachDamage; horde.stats.reachDamage = 0; look.state.flash = Math.max(look.state.flash, 0.1); game.lastReached = horde.stats.reached; }
     if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
@@ -474,15 +490,16 @@ renderer.setAnimationLoop((now) => {
     fx.shards.update(dt, time); fx.blood.update(dt, time); fx.gibs.update(dt, time); fx.brass.update(dt, time); fx.decals.update(time);
     audio.setGroan(Math.min(1, horde.stats.alive / 200) * 0.3);
   } else {
-    horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경)
+    horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경·카드 선택 중)
     gun.state.firingPtr = false;
     gun.update(dt, time);
+    skills.update(0, time);
     vehicle.update(dt);
   }
   updateCamera(dt);
 
   // 천둥·번개: 한 번씩 세계를 하얗게 찢는다
-  if (started && time > game.nextLightning) {
+  if (running && time > game.nextLightning) {
     game.nextLightning = time + 9 + Math.random() * 16;
     look.state.flash = Math.max(look.state.flash, 0.65);
     moon.intensity = 16;
@@ -494,17 +511,17 @@ renderer.setAnimationLoop((now) => {
   for (const l of lanterns) l.light.intensity = l.base * (0.85 + 0.15 * Math.sin(now * 0.011 + l.phase) + 0.08 * Math.sin(now * 0.037 + l.phase * 3));
 
   // 붉은 밤: 장갑 28% 미만이면 세계가 붉게 물든다
-  const wantBlood = started && game.hp < 28;
+  const wantBlood = running && game.hp < 28;
   if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner(S.bloodNight); juice.stamp('危'); audio.thunder(); audio.setBgm('bloodnight'); }
   if (!wantBlood && game.bloodNight) { game.bloodNight = false; if (!game.over && game.cont <= 0) audio.setBgm('wave'); }
   look.state.blood += ((game.bloodNight ? 1 : 0) - look.state.blood) * Math.min(1, rawDt * 2.5);
   fires.update(dt); juice.update(time);
 
   // 새벽: 恐龍을 쓰러뜨리면 밝아진다
-  if (started && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }
-  if (started && time > game.dawnAt + 12) endGame(true);
+  if (running && time > game.dawnAt) { look.state.darkness = Math.max(-0.6, look.state.darkness - dt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }
+  if (running && time > game.dawnAt + 12) endGame(true);
   // 사망 → 슬로우 → CONTINUE? 카운트다운(실시간 9초) → 종료
-  if (started && game.hp <= 0 && !game.dying && game.cont <= 0) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; audio.setBgm('death'); }
+  if (running && game.hp <= 0 && !game.dying && game.cont <= 0) { game.dying = 0.9; juice.stamp('終'); look.state.invert = 1; audio.setBgm('death'); }
   if (game.dying > 0) { game.dying -= rawDt; if (game.dying <= 0) { game.dying = 0; if (game.demo) endGame(false); else { game.cont = 9.99; contEl.style.opacity = 1; contEl.style.pointerEvents = 'auto'; } } }
   if (game.cont > 0) { game.cont -= rawDt; contN.textContent = Math.max(0, Math.ceil(game.cont - 0.99)); if (game.cont <= 0) { game.cont = 0; contEl.style.opacity = 0; endGame(false); } }
 

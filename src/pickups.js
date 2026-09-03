@@ -28,8 +28,8 @@ export function createPickups(scene, { vehicle, fx, audio, juice, onHeal, onScor
     fx.shards.burst(p.x, 0.7, p.z, 18, { dirY: 0.9, spread: 1.2, power: 6, scale: 0.9, time });
     fx.blood.burst(p.x, 0.8, p.z, 0, { time });
     c.group.removeFromParent();
-    onHeal(heal); onScore(300, '修');
-    juice.stamp('修'); juice.banner(S.repair(heal), 1400); audio.coin();
+    onHeal(heal * P.healMul); onScore(300, '修');
+    juice.stamp('修'); juice.banner(S.repair(Math.round(heal * P.healMul)), 1400); audio.coin();
   }
   // gun.targets 계약
   function raycast(ray, maxT) {
@@ -57,5 +57,6 @@ export function createPickups(scene, { vehicle, fx, audio, juice, onHeal, onScor
       if (Math.abs(p.x - vp.x) < 2.0 && p.z < vp.z + 1 && p.z > vp.z - 4.2) open(c, time, 'ram');
     }
   }
-  return { spawn, update, raycast, hit, crates };
+  const P = { spawn, update, raycast, hit, crates, healMul: 1 };   // healMul: 스킬 '수리 강화' 가 2 로 올린다
+  return P;
 }

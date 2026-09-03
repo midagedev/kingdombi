@@ -363,7 +363,7 @@ export function createHorde(scene, physics, {
         vx[i] *= 0.2; vz[i] *= 0.2;
         if (type[i] === 2) { stats.reached++; stats.reachDamage += TYPES[2].reachDmg; kill(i, 0, 1, time, 4); continue; }
         attackT[i] += dt; latched[i] += dt;
-        if (latched[i] > IMPALE[type[i]]) { const sx = Math.sign(px[i] - tx || 1); kill(i, sx * 0.9, -0.2, time, 5, 'impale'); continue; }
+        if (latched[i] > IMPALE[type[i]] * H.impaleMul) { const sx = Math.sign(px[i] - tx || 1); kill(i, sx * 0.9, -0.2, time, 5, 'impale'); continue; }
         if (attackT[i] >= 1.0) { attackT[i] -= 1.0; stats.reached++; stats.reachDamage += TYPES[type[i]].reachDmg; iHit.setX(i, time); }
       } else { attackT[i] = 0.6; latched[i] = Math.max(0, latched[i] - dt * 2); } // 도착 0.4초 뒤 첫 공격
       q.setFromAxisAngle(up, yaw[i]);
@@ -431,8 +431,9 @@ export function createHorde(scene, physics, {
   function kill(i, dirX, dirZ, time, force = 9, cause = null) {
     if (!alive[i]) return;
     alive[i] = 0; stats.kills++;
-    hooks.onKill?.(type[i], px[i], pz[i], time, cause);
-    if (cause === 'impale') stats.impaled++;
+    const cc = cause || H.causeOverride;   // 스킬 자동공격 래퍼가 'auto' 를 심는다 — 절반 점수·배율 없음
+    hooks.onKill?.(type[i], px[i], pz[i], time, cc);
+    if (cc === 'impale') stats.impaled++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: 0, z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
     cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i];
@@ -469,5 +470,20 @@ export function createHorde(scene, physics, {
     return n;
   }
 
-  return { update, raycast, damage, kill, crushNear, ram, mix, stats, hooks, px, pz, alive, type, scale, N, body, glow, uniforms };
+  // 스킬 가시 오라: 반경 안 좀비에 지속 피해 — 타격 플래시·넉백 없이 조용히 긁힌다
+  function aura(x, z, radius, amount, time) {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL), rr = radius * radius;
+    const reach = Math.ceil(radius / CELL);
+    for (let ox = -reach; ox <= reach; ox++) for (let oz = -reach; oz <= reach; oz++) {
+      let j = cellHead[(((cx + ox) & (GRID - 1)) << 6) | ((cz + oz) & (GRID - 1))];
+      while (j !== -1) {
+        const nj = next[j];
+        if (alive[j]) { const sx = px[j] - x, sz = pz[j] - z; if (sx * sx + sz * sz < rr) { hp[j] -= amount; if (hp[j] <= 0) kill(j, sx / (radius || 1), 0.2, time, 3); } }
+        j = nj;
+      }
+    }
+  }
+
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, mix, stats, hooks, px, pz, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1 };
+  return H;
 }

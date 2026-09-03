@@ -65,6 +65,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   { const pa = tracerGeo.attributes.position, col = new Float32Array(pa.count * 3); for (let i = 0; i < pa.count; i++) { const t = pa.getZ(i) + 0.5; col[i * 3] = 0.35 + 0.65 * t; col[i * 3 + 1] = 0.12 + 0.8 * t * t; col[i * 3 + 2] = 0.02 + 0.7 * t * t * t; } tracerGeo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
   const tracer = new THREE.InstancedMesh(tracerGeo, new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), TRACERS);
   tracer.layers.set(LAYER_SPOT); tracer.frustumCulled = false; tracer.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(tracer);
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < TRACERS; i++) tracer.setMatrixAt(i, z); }   // three r185 인스턴스 기본값은 항등행렬 — 미사용 슬롯이 원점에 그려진다
   const tracerBorn = new Float32Array(TRACERS).fill(-1e9); let tracerCursor = 0;
   // 예광탄은 탄띠에서 다섯 발에 하나. 레이저가 아니라 4.5m 짧은 불꽃 줄기가 320 m/s 로 날아가 목표에서 꺼진다.
   const TRACER_EVERY = 3, TRACER_SPEED = 320, TRACER_LEN = 3.6;
@@ -74,6 +75,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const IMP = 32;
   const impact = new THREE.InstancedMesh(new THREE.SphereGeometry(0.14, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffe2a8, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }), IMP);
   impact.layers.set(LAYER_SPOT); impact.frustumCulled = false; impact.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(impact);
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < IMP; i++) impact.setMatrixAt(i, z); }
   const impBorn = new Float32Array(IMP).fill(-1e9), impPos = new Float32Array(IMP * 3); let impCur = 0;
   function spark(x, y, z, time) { const i = impCur; impCur = (impCur + 1) % IMP; impBorn[i] = time; impPos[i * 3] = x; impPos[i * 3 + 1] = y; impPos[i * 3 + 2] = z; }
   function updateImpacts(time) {
@@ -92,7 +94,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false,
+  const state = { yaw: 0, pitch: -0.06, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -217,7 +219,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const MAX = 260;
 
     // 1) 좀비 — 관통: 가까운 순 최대 3명, 대미지 감쇠. 건물·물리에 먼저 막히면 그 앞까지만.
-    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 4);
+    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 4 + state.pierce);
     const z = zh ? zh[0] : null;
     let t = zh ? zh[zh.length - 1].t : MAX;
     // 2) 건물 부위
@@ -291,7 +293,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 발사
     if (state.jammed > 0) state.jammed -= dt;
     if (state.firing && state.spin > 0.55 && state.jammed <= 0) {
-      fireAcc += dt * RATE * state.spin;
+      fireAcc += dt * RATE * state.rateMul * state.spin;
       let n = 0;
       while (fireAcc >= 1 && n < 4) { fireAcc -= 1; fireOne(time); n++; }
     } else fireAcc = 0;
@@ -459,5 +461,5 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (b.hp <= 0 && b.alive) collapse(b, 0, -1, time);
     }
   }
-  return { root, yawPivot, pitchPivot, muzzle, state, targets, hooks, update, attachInput, blastBuildings, throwBomb, razeBuilding };
+  return { root, yawPivot, pitchPivot, muzzle, state, targets, hooks, update, attachInput, blastBuildings, throwBomb, razeBuilding, spark };
 }

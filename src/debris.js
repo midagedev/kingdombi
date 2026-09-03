@@ -10,6 +10,7 @@ export function createDebris(scene, { count = 700, layer = 0, color = 0x9a9a9a, 
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false; mesh.layers.set(layer); mesh.castShadow = layer === 0;
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < count; i++) mesh.setMatrixAt(i, z); }   // three r185 인스턴스 기본값은 항등행렬 — 쓰기 전에 0으로
   scene.add(mesh);
 
   const pos = new Float32Array(count * 3), vel = new Float32Array(count * 3), rot = new Float32Array(count * 3), rv = new Float32Array(count * 3);
@@ -60,6 +61,7 @@ export function createDecals(scene, { count = 500, color = 0xc1121f } = {}) {
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false; mesh.layers.set(LAYER_SPOT);
+  { const z = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < count; i++) mesh.setMatrixAt(i, z); }   // 인스턴스 기본 항등행렬 → 미사용 슬롯 0-스케일
   scene.add(mesh);
   const born = new Float32Array(count).fill(-1e9), target = new Float32Array(count), cx = new Float32Array(count), cz = new Float32Array(count), sx = new Float32Array(count);
   let cursor = 0;
