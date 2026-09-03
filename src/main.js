@@ -394,7 +394,7 @@ function cullBuildings() {
   for (const b of world.buildings) {
     const d = (b.center.z - vpos.z) * s; b.merged.visible = !!b.landmark || (d < near && d > far);
     // 먼 집은 그림자 패스에서 뺀다 — 안개 속 지붕선만 남고 그림자는 보이지 않는데 드로우콜은 두 배로 낸다
-    const cast = flip ? Math.abs(d) < cull.shadowFar : d > -cull.shadowFar;
+    const cast = !!b.landmark || (flip ? Math.abs(d) < cull.shadowFar : d > -cull.shadowFar);   // 궁궐(광장에서 d≈-70)·사찰 그림자는 늘 — 恐龍 결전 구도가 그림자에 얹혀 있다
     if (b.merged.userData.cast !== cast) { b.merged.userData.cast = cast; b.merged.traverse((m) => { if (m.isMesh) m.castShadow = cast; }); }
   }
 }
