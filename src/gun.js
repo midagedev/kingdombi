@@ -92,7 +92,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   let reticle = null; const setReticle = (el) => { reticle = el; };
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
+  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1, cur: { x: -1, y: 0 }, follow: true,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, g: 40, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -193,18 +193,13 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     let t = block;
     if (zt < block) { t = zt; kind = 'zombie'; }
     a.t = t; a.block = block; a.kind = kind;
-    // 감도·조준점 기준 거리 = 광선이 가슴 높이(y 1.1) 평면과 만나는 거리. 좀비·건물에 붙지 않아 요동하지 않는다.
-    a.g = _d.y < -1e-3 ? THREE.MathUtils.clamp((1.1 - _o.y) / _d.y, 6, 90) : 60;
     a.x = _o.x + _d.x * t; a.y = _o.y + _d.y * t; a.z = _o.z + _d.z * t;
     const u = horde.uniforms; if (u.uAimO) { u.uAimO.value.copy(_o); u.uAimD.value.copy(_d); u.uAimT.value = -1; }   // 광선 위 좀비 하이라이트도 끈다 — 잠금으로 읽힌다
-    // 2D 조준점: 가슴 평면 접점을 화면에 투영. 카메라가 조준각을 따라 도니 화면 가운데 근처에서 포신과 1:1 로 움직인다.
+    // 2D 조준점 = 화면 커서(state.cur) 그 자리. 포신에서 투영하지 않는다 — 투영하면 반동 떨림·카메라 흔들림·카메라 추종이 전부 조준선에 실려 "제멋대로 움직이는" 것으로 읽혔다(2026-09-03).
     if (reticle) {
-      const on = state.showAim && camera;
-      if (on) { _hit.copy(_o).addScaledVector(_d, a.g).project(camera); }
-      const vis = on && _hit.z < 1 && Math.abs(_hit.x) < 1.2 && Math.abs(_hit.y) < 1.2;
-      reticle.style.opacity = vis ? '1' : '0';
+      reticle.style.opacity = state.showAim ? '1' : '0';
       reticle.classList.toggle('fire', state.firing && state.spin > 0.55); reticle.classList.toggle('hit', time - state.lastHit < 0.07);
-      if (vis) reticle.style.transform = `translate(${((_hit.x + 1) / 2 * innerWidth).toFixed(1)}px, ${((1 - _hit.y) / 2 * innerHeight).toFixed(1)}px) translate(-50%, -50%)`;
+      reticle.style.transform = `translate(${state.cur.x.toFixed(1)}px, ${state.cur.y.toFixed(1)}px) translate(-50%, -50%)`;
     }
   }
 
@@ -281,8 +276,6 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 열 관리 없음(2026-09-03): 총열이 달아오르는 건 보기 좋으라고 남긴 시각 효과일 뿐, 막히지 않는다
   }
 
-  // 감도 기준 거리 = 포신 기울기가 가리키는 바닥까지의 거리(aim.g). 첫 접점(aim.t)을 쓰면 링이 7 m 좀비를 지날 때마다 회전이 3배 요동해 자동조준처럼 느껴졌다(2026-09-03 실측 1.0↔3.0 rad/s).
-  const aimDist = () => THREE.MathUtils.clamp(state.aim.g || 40, 6, 60);
   function update(dt, time, rawDt = dt) {
     // 스핀업/다운
     const want = state.firing && state.jammed <= 0 ? 1 : 0;
@@ -310,22 +303,21 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     flashLight.intensity = fl * 110;
     // 반동 감쇠
     state.recoil *= Math.exp(-dt * 12);
-    // 조준 반영
-    // 조이스틱·키보드: 기울기 → 회전 속도(데드존 0.12, 지수 곡선 — 살짝 기울이면 정밀, 끝까지 밀면 휙 돈다)
-    // 실시간(rawDt)으로 돈다 — 히트스톱·사망 슬로우·CONTINUE 중에도 조준은 느려지지 않는다
-    // 점착 조준은 뺐다(2026-09-03): 떼 속에선 조준선이 초당 여러 번 좀비를 지나 속도가 덜컥거렸다.
-    // 대신 거리 반비례: 링이 바닥에서 움직이는 속도를 거리와 무관하게(≈30 m/s) 맞춘다. 멀리는 천천히, 가까이는 휙.
-    const ad = aimDist();
-    const yawRate = THREE.MathUtils.clamp(30 / ad, 0.75, 2.6), pitchRate = 1.3 * THREE.MathUtils.clamp(12 / ad, 0.3, 1);
+    // 조준 = 화면 커서(state.cur, px). 입력은 커서만 움직이고, 포신은 매 프레임 커서가 가리키는 세계 점을 향해 살짝 늦게(≈0.07 s) 따라간다.
+    // 이전(포신 각도가 곧 조준, 조준선은 포신 투영)엔 반동·카메라 흔들림·거리별 감도가 전부 조준선에 실려 상하가 제멋대로 뛰었다(2026-09-03).
+    // 조이스틱·키보드: 기울기 → 커서 속도(데드존 0.12, 지수 곡선), 끝까지 밀면 ≈1.2초에 화면을 가로지른다. 실시간(rawDt) — 히트스톱 중에도 조준은 느려지지 않는다.
     const kx = !state.live ? 0 : (keys.has('ArrowLeft') || keys.has('KeyA') ? -1 : 0) + (keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0);
     const ky = !state.live ? 0 : (keys.has('ArrowUp') || keys.has('KeyW') ? -1 : 0) + (keys.has('ArrowDown') || keys.has('KeyS') ? 1 : 0);
     // state.live 가 스틱까지 막는다 — 타이틀·앞뒤 전환(flip) 중엔 포신이 돌지 않는다
     const sx = !state.live ? 0 : (state.stick.active ? state.stick.x : kx), sy = !state.live ? 0 : (state.stick.active ? state.stick.y : ky);
+    const c = state.cur;
+    if (c.x < 0 || !state.live) { c.x = innerWidth / 2; c.y = innerHeight / 2; }   // 시작·앞뒤 전환·CONTINUE 뒤엔 가운데서 다시
     if (sx || sy) {
       const curve = (v) => { const a = Math.min(1, Math.abs(v)); const d = Math.max(0, a - 0.12) / 0.88; return Math.sign(v) * (d * d * 0.7 + d * 0.3); };
-      state.yaw = THREE.MathUtils.clamp(state.yaw - curve(sx) * yawRate * rawDt, -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - curve(sy) * pitchRate * rawDt, -0.62, state.pitchMax);
+      const v = Math.max(innerWidth, innerHeight) * 0.85 * rawDt;
+      c.x = THREE.MathUtils.clamp(c.x + curve(sx) * v, 0, innerWidth); c.y = THREE.MathUtils.clamp(c.y + curve(sy) * v, 0, innerHeight);
     }
+    if (state.live && state.follow) aimAtScreen(c.x, c.y, 1 - Math.exp(-rawDt * 14));   // follow=false: 데모 자동조준이 yaw/pitch 를 직접 쓴다
     const kb = state.live && !state.stick.active;   // 키보드는 게임 중에만(타이틀·전적 카드에서 Shift/Enter 로 총이 돌면 안 된다)
     state.firing = state.live && (state.firingPtr || (kb && (keys.has('Enter') || keys.has('ShiftLeft') || keys.has('ShiftRight'))));
     root.rotation.y = state.facing;   // 포탑 전체가 보는 쪽(추격 π · 보스 0) — 광선·예광탄·조준 링이 월드 행렬을 따라 같이 돈다
@@ -352,7 +344,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const keys = new Set();
   // 마우스 클릭 한 번 = 그 자리로 조준(화면점 → 가슴 높이 평면). 이후 드래그가 다듬는다. 카메라가 조준각을 따라 돌기 때문에 '커서를 계속 따라가기'는 하지 않는다(폭주).
   const _ndc = new THREE.Vector2(), _rc = new THREE.Raycaster(), _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.1), _pt = new THREE.Vector3();
-  function aimAtScreen(cx, cy) {
+  function aimAtScreen(cx, cy, k = 1) {
     if (!camera) return;
     _ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); _rc.setFromCamera(_ndc, camera);
     // 보스·수리 상자처럼 키 큰 표적은 화면 광선이 그 부위 상자에 닿은 점을 쓴다 — 가슴 높이 평면만 쓰면 巨人 가슴을 클릭해도 보스 뒤 88 m 지면을 겨눈다(실측)
@@ -360,20 +352,22 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (th) _pt.copy(_rc.ray.origin).addScaledVector(_rc.ray.direction, th.t);
     else if (!_rc.ray.intersectPlane(_plane, _pt)) return;
     muzzle.getWorldPosition(_o);
-    const dx = _pt.x - _o.x, dz = _pt.z - _o.z;
+    const f = state.facing || 0;
+    let dx = _pt.x - _o.x, dz = _pt.z - _o.z, dy = _pt.y - _o.y;
+    // 화면 아래쪽(마차 자리)은 가슴 평면 접점이 총구 옆·뒤로 떨어져 각이 뒤집힌다 — 그땐 화면 광선 방향 자체를 겨눈다(커서가 아래에 있어도 포신이 굳지 않게)
+    if (-(dx * Math.sin(f) + dz * Math.cos(f)) < 4) { const d = _rc.ray.direction; dx = d.x; dz = d.z; dy = d.y; }
     // 조준각은 포탑이 보는 쪽(state.facing) 기준의 상대각이다 — 추격전(뒤를 봄)에도 같은 식이 쓰인다
-    let ty = Math.atan2(-dx, -dz) - (state.facing || 0);
+    let ty = Math.atan2(-dx, -dz) - f;
     ty = Math.atan2(Math.sin(ty), Math.cos(ty));
     if (Math.abs(ty) > 1.5) return;   // 조준 범위 밖(등 뒤)은 무시
-    state.yaw = ty;
-    state.pitch = THREE.MathUtils.clamp(Math.atan2(_pt.y - _o.y, Math.hypot(dx, dz)), -0.62, state.pitchMax);
+    state.yaw += (ty - state.yaw) * k;
+    state.pitch += (THREE.MathUtils.clamp(Math.atan2(dy, Math.hypot(dx, dz)), -0.62, state.pitchMax) - state.pitch) * k;
   }
   function attachInput(el, { stickEl = null, forceStick = false } = {}) {
-    let lastX = 0, lastY = 0, mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
+    let mouseActive = false, stickId = -1, sx0 = 0, sy0 = 0;
     addEventListener('keydown', (e) => { if (e.target?.tagName === 'INPUT') return; if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Enter', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { keys.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); } });
     addEventListener('keyup', (e) => keys.delete(e.code)); addEventListener('blur', () => keys.clear());
     const R = 54;
-    const k = () => 2.6 / Math.max(320, innerWidth);
     const knob = stickEl?.firstElementChild;
     const cap = (e) => { try { el.setPointerCapture(e.pointerId); } catch {} };   // 합성 이벤트(테스트)엔 활성 포인터가 없다
     const showStick = (x, y) => { if (!stickEl) return; stickEl.classList.add('on'); stickEl.classList.remove('hint'); stickEl.style.left = `${x}px`; stickEl.style.top = `${y}px`; stickEl.style.bottom = 'auto'; stickEl.style.right = 'auto'; };
@@ -389,7 +383,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         showStick(sx0, sy0); cap(e); return;
       }
       if (e.button === 2) { hooks.onBombKey?.(); return; }
-      mouseActive = true; lastX = e.clientX; lastY = e.clientY; state.firingPtr = true; cap(e); aimAtScreen(e.clientX, e.clientY);
+      mouseActive = true; state.firingPtr = true; cap(e); state.cur.x = e.clientX; state.cur.y = e.clientY;
     });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerId === stickId) {
@@ -398,11 +392,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         state.stick.x = dx / R; state.stick.y = dy / R; moveKnob(dx, dy);
         return;
       }
-      if (!mouseActive) return;
-      const dk = THREE.MathUtils.clamp(18 / aimDist(), 0.45, 1);   // 멀리 겨눌 땐 드래그도 둔하게
-      state.yaw = THREE.MathUtils.clamp(state.yaw - (e.clientX - lastX) * k() * dk, -1.5, 1.5);
-      state.pitch = THREE.MathUtils.clamp(state.pitch - (e.clientY - lastY) * k() * 0.8 * dk, -0.62, state.pitchMax);
-      lastX = e.clientX; lastY = e.clientY;
+      if (forceStick || e.pointerType === 'touch' || !state.live) return;
+      state.cur.x = e.clientX; state.cur.y = e.clientY;   // 마우스는 누르지 않아도 조준선이 따라온다(라이트건)
     });
     const stop = (e) => {
       if (e.pointerId === stickId) { stickId = -1; state.stick.active = false; state.stick.x = state.stick.y = 0; hideStick(); }

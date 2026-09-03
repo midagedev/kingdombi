@@ -389,7 +389,9 @@ function updateCamera(dt, rawDt = dt) {
   const k = director.phase === 'ready' ? 2.2 : 9;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업
   const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
-  const yaw = gun.state.yaw * 0.6;
+  // 카메라는 포신이 아니라 **커서**를 따른다(2026-09-03). 조준선이 화면에 고정된 구조에서 카메라가 포신을 보면 커서→포신→카메라→커서 되먹임으로 포신이 끝까지 돌아갔다(실측 NDC 0.72 커서에 yaw −1.28).
+  const cur = gun.state.cur, cx = gun.state.follow ? -(cur.x / innerWidth * 2 - 1) * 0.5 : gun.state.yaw, cy = gun.state.follow ? (1 - cur.y / innerHeight * 2) * 0.15 : Math.sin(gun.state.pitch) * 0.6;
+  const yaw = cx * 0.6;
   // 조준 추종은 옆으로 1.8m 만 미끄러진다(궤도가 아니다 — 조준할 때마다 카메라가 돌면 멀미난다).
   // 앞뒤 전환은 그 '완성된 오프셋'을 통째로 y축 회전시킨다. 식 안에 각을 더하면 중간(π/2)에서 반경이 무너져 마차로 줌인된다.
   // 거리(C.d)는 고정하고 옆으로만 미끄러진다. 예전 식은 cos(yaw)·d 라 옆을 겨눌수록 카메라가 마차로 줌인돼,
@@ -398,7 +400,7 @@ function updateCamera(dt, rawDt = dt) {
   const r = gun.state.recoil + game.shake;
   camPos.x += (Math.random() - 0.5) * r * 0.06; camPos.y += (Math.random() - 0.5) * r * 0.05;   // 반동 떨림 절반 — 화면이 아니라 총이 흔들려야 한다
   camera.position.lerp(camPos, Math.min(1, dt * k));
-  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).applyAxisAngle(AXIS_Y, facing.a).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
+  tmpV.set(-Math.sin(cx), cy - 0.02, -Math.cos(cx)).applyAxisAngle(AXIS_Y, facing.a).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
   camTarget.lerp(tmpV, Math.min(1, dt * Math.max(k, 12 * (k / 9))));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
@@ -537,7 +539,7 @@ renderer.setAnimationLoop((now) => {
   const reachedBefore = game.lastReached;
   if (running && game.demo) {
     // 자동 데모: 보스가 있으면 약점(노출 코어 > 쇠판 > QTE 덩어리), 아니면 가장 가까운 좀비를 겨눈 채 훑는다 (클립 녹화용)
-    gun.state.firingPtr = game.cont <= 0 && !q.has('nofire');   // gun.update 가 firing 을 포인터·키 상태에서 다시 계산하므로 포인터 쪽을 흉내낸다   // ?nofire=1: 조준만 하고 쏘지 않는다(보스 스크린샷용)
+    gun.state.follow = false; gun.state.firingPtr = game.cont <= 0 && !q.has('nofire');   // gun.update 가 firing 을 포인터·키 상태에서 다시 계산하므로 포인터 쪽을 흉내낸다   // ?nofire=1: 조준만 하고 쏘지 않는다(보스 스크린샷용)
     gun.muzzle.getWorldPosition(muzzleW);
     let tx = null;
     if (bosses.aimPoint(aimW)) tx = aimW;
