@@ -305,14 +305,17 @@ canvas.addEventListener('pointerdown', () => {
 
 // ── 카메라: 마차 뒤 어깨 너머. 반동·마차 덜컹거림·보스 타격으로만 흔들린다 ──
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new THREE.Vector3(), camBase = new THREE.Vector3(), muzzleW = new THREE.Vector3(), aimW = new THREE.Vector3();
+// 세로(폰)는 화각이 좁아 마차·가시가 화면 아래로 잘렸다 — 더 뒤·위에서 내려다본다(줌아웃). window.__kb.cam 으로 라이브 튠.
+const cam = { land: { h: 10.2, d: 14.0, look: 34, drop: 3.2 }, port: { h: 15, d: 20, look: 30, drop: 5 } };
 function updateCamera(dt) {
+  const C = camera.aspect < 1 ? cam.port : cam.land;
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z + 0.5);
   const yaw = gun.state.yaw * 0.6;
-  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, 10.2, Math.cos(yaw) * 14.0 + Math.sin(yaw) * 1.8).add(camBase);   // 마차 전체(바퀴까지)가 아래에 보이도록 조금 더 뒤·위
+  camPos.set(Math.sin(yaw) * -1.0 + Math.cos(yaw) * 1.8, C.h, Math.cos(yaw) * C.d + Math.sin(yaw) * 1.8).add(camBase);   // 마차 전체(바퀴까지)가 아래에 보이도록 조금 더 뒤·위
   const r = gun.state.recoil + game.shake;
   camPos.x += (Math.random() - 0.5) * r * 0.06; camPos.y += (Math.random() - 0.5) * r * 0.05;   // 반동 떨림 절반 — 화면이 아니라 총이 흔들려야 한다
   camera.position.lerp(camPos, Math.min(1, dt * 9));
-  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(34).add(camBase).add(new THREE.Vector3(0, -3.2, 0));
+  tmpV.set(-Math.sin(gun.state.yaw), Math.sin(gun.state.pitch) * 0.6 - 0.02, -Math.cos(gun.state.yaw)).multiplyScalar(C.look).add(camBase); tmpV.y -= C.drop;
   camTarget.lerp(tmpV, Math.min(1, dt * 12));
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
@@ -383,7 +386,7 @@ function updateDirector(dt, time) {
 
 const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont'), contN = contEl.querySelector('.n');
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
-window.__kb = { renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, juice, fps: 0 };
+window.__kb = { cam, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, juice, fps: 0 };
 cullBuildings(); followLights(0, ROUTE.start);
 $('gauges').classList.add('hidden');   // 타이틀에선 장갑 게이지 대신 크레딧이 그 자리에 있다
 
