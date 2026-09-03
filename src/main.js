@@ -366,8 +366,8 @@ const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new 
 // 세로(폰)는 화각이 좁아 마차·가시가 화면 아래로 잘렸다 — 더 뒤·위에서 내려다본다(줌아웃). window.__kb.cam 으로 라이브 튠.
 // 대치(보스)는 위에서 내려다보고, 추격은 낮게 깔아 마차를 화면 아래 1/3 에 두고 그 너머로 떼가 밀려온다.
 const cam = {
-  land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 },
-  chaseLand: { h: 9.5, d: 14.0, look: 30, drop: 4.8 }, chasePort: { h: 13, d: 18, look: 27, drop: 4.6 },
+  land: { h: 7, d: 14.0, look: 32, drop: 2.0 }, port: { h: 10.5, d: 20, look: 28, drop: 3.4 },
+  chaseLand: { h: 5.5, d: 14.0, look: 30, drop: 2.8 }, chasePort: { h: 8, d: 18, look: 27, drop: 3.2 },
 };
 // 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
 // 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
