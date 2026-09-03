@@ -82,8 +82,8 @@ halo.scale.setScalar(150); scene.add(halo);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x33312e, roughness: 0.68, metalness: 0.0 }));
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.03; ground.receiveShadow = true; scene.add(ground);
 const streetLen = ROUTE.start - ROUTE.end + 160;
-const street = new THREE.Mesh(new THREE.PlaneGeometry(16, streetLen), new THREE.MeshStandardMaterial({ color: 0x46433f, roughness: 0.55, metalness: 0.0 }));
-street.rotation.x = -Math.PI / 2; street.position.set(0, -0.02, (ROUTE.start + ROUTE.end) / 2 - 50); street.receiveShadow = true; scene.add(street);
+const street = new THREE.Mesh(new THREE.PlaneGeometry(16, streetLen + 60), new THREE.MeshStandardMaterial({ color: 0x46433f, roughness: 0.55, metalness: 0.0 }));
+street.rotation.x = -Math.PI / 2; street.position.set(0, -0.02, (ROUTE.start + ROUTE.end) / 2 - 20); street.receiveShadow = true; scene.add(street);   // 출발점 뒤 마을(+z 70 m)까지 길이 이어진다
 
 // ── 거리 등롱 둘: 실광원 예산 2. 마차가 지나치면 110m 앞으로 건너뛴다(개구리 뛰기) ──
 const lanterns = [];
@@ -146,6 +146,7 @@ style.textContent = `
     #score .lbl i { font-size: 14px; } #gauges .lbl span { font-size: 15px; }
     #wave #waveN { font-size: 26px; }
     #hp { height: 4px; } #hp i { height: 5px; top: -0.5px; }
+    #boss { top: calc(max(env(safe-area-inset-top), 14px) + 58px) !important; width: 64% !important; }   /* 점수(우상단 34px 7자리) 아래로 — 390px 에선 보스 이름이 점수와 겹쳤다 */
     #boss div { height: 3px !important; } #boss i { height: 4px !important; } #boss span { font-size: 12px !important; opacity: .9 !important; }
     #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
     #bomb { width: 76px; height: 76px; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 160px); } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
@@ -287,8 +288,9 @@ const pickups = createPickups(scene, { vehicle, fx, audio, juice, onHeal: repair
 gun.targets.push(pickups);
 // 스킬(뱀서류 보강): 정차 전환 3번 카드 선택. 자동공격 카드는 巨人 뒤부터 — 초반 클립은 개틀링이主体다
 const skills = createSkills(scene, { horde, gun, vehicle, fx, audio, look, juice, game, hud, camera, pickups, bosses, onScore: (n, g) => addScore(n, g, true), isDemo: game.demo });
-// 차선 위 수리 상자: 70m 마다 하나(정차 지점 근처 제외). 정차·보스전엔 앞쪽에 하나 더 떨어진다(쏘면 열린다).
-for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + dayRand() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((dayRand() - 0.5) * 5, z, 'lane');
+// 길가 수리 상자: 70m 마다 하나(정차 지점 근처 제외), 마차가 스치는 길 가장자리(|x| 3.6~5). 카메라가 뒤를 보므로 지나친 뒤 떼 속에서 호박색으로 빛나고, 2발 쏘면 열린다.
+// 예전엔 차선 한복판에서 들이받아 먹었는데 그 순간이 화면 밖이라 +25 만 뜨고 아무것도 안 보였다(2026-09-03). 정차·보스전엔 앞쪽에 하나 더 떨어진다.
+for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + dayRand() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((dayRand() < 0.5 ? -1 : 1) * (3.6 + dayRand() * 1.4), z, 'lane');
 gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, time);
 // 비격진천뢰 폭발: 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판 파괴·피해
 gun.hooks.onBlast = (x, z, R, time) => {
@@ -355,6 +357,9 @@ const cam = {
   land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 },
   chaseLand: { h: 9.5, d: 14.0, look: 30, drop: 3.4 }, chasePort: { h: 13, d: 18, look: 27, drop: 4.6 },
 };
+// 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
+// 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
+const cull = { chaseFar: 120, chaseNear: 20, bossFar: 70, shadowFar: 70 };
 function updateCamera(dt) {
   const P = camera.aspect < 1;
   const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
@@ -383,8 +388,15 @@ function updateCamera(dt) {
 function cullBuildings() {
   // 보는 쪽으로 멀리, 등 뒤로 60m. 추격전은 뒤를 보므로 창이 통째로 뒤집힌다.
   // 대치는 서서 코앞의 보스를 보므로 짧게 — 200m 를 세우면 드로우콜이 예산(≈1000)을 넘는다.
-  const s = facing.chase ? -1 : 1, far = facing.chase ? -170 : -70;
-  for (const b of world.buildings) { const d = (b.center.z - vpos.z) * s; b.merged.visible = !!b.landmark || (d < 60 && d > far); }
+  // 전환(flip) 중엔 카메라가 양쪽을 다 훑으므로 양방향으로 넓게 켠다(1.2초). 끝나면 보는 쪽 창으로 줄어든다.
+  const flip = director.phase === 'flip', s = facing.chase ? -1 : 1;
+  const far = flip || facing.chase ? -cull.chaseFar : -cull.bossFar, near = flip ? cull.chaseFar : facing.chase ? cull.chaseNear : 60;
+  for (const b of world.buildings) {
+    const d = (b.center.z - vpos.z) * s; b.merged.visible = !!b.landmark || (d < near && d > far);
+    // 먼 집은 그림자 패스에서 뺀다 — 안개 속 지붕선만 남고 그림자는 보이지 않는데 드로우콜은 두 배로 낸다
+    const cast = flip ? Math.abs(d) < cull.shadowFar : d > -cull.shadowFar;
+    if (b.merged.userData.cast !== cast) { b.merged.userData.cast = cast; b.merged.traverse((m) => { if (m.isMesh) m.castShadow = cast; }); }
+  }
 }
 
 // 앞뒤 전환: 1.2초 동안 카메라가 마차를 축으로 돌고 그동안 조준은 잠긴다(gun.state.live).
@@ -393,8 +405,13 @@ function startFlip(to, then, time) {
   director.flipFrom = facing.a; director.flipTo = to; director.flipThen = then;
   director.phase = 'flip'; director.stateT = 0;
   facing.chase = Math.abs(to) > 1; horde.chase = facing.chase;
-  horde.speedMul = facing.chase ? 1.22 : 1;   // 추격전은 마차가 달아나므로 떼가 조금 빨라야 붙는다
+  if (facing.chase) applyDistrict(districtAt(vpos.z)); else horde.speedMul = 1;   // 추격전은 마차가 달아나므로 떼가 구역 배율만큼 빨라야 붙는다
   horde.recycleSide(facing.chase ? -1 : 1, time);
+  cullBuildings();   // 전환 중엔 양방향 창 — 카메라가 돌아가며 보게 될 쪽 집이 미리 켜져 있어야 한다
+}
+// 구역 압박 곡선: 정원·종류 비율·속도가 구역마다 오른다(world.js districts). 추격 중에만 — 대치는 toBoss 가 따로 정한다.
+function applyDistrict(d) {
+  horde.budget = Math.round(zombieCount * d.cap); Object.assign(horde.mix, d.mix); horde.speedMul = d.speed;
 }
 // 대치 진입: 마차가 서고 보스가 나온다. 잡몹은 얇게 깔린다(보스에 집중).
 function toBoss(time) {
@@ -419,14 +436,14 @@ function updateDirector(dt, time) {
     const k = Math.min(1, director.stateT / 1.2), e = k * k * (3 - 2 * k);
     facing.a = director.flipFrom + (director.flipTo - director.flipFrom) * e;
     gun.state.yaw += (0 - gun.state.yaw) * Math.min(1, dt * 5);   // 포신을 정면으로 모아 놓고 넘긴다
-    if (k >= 1) { facing.a = director.flipTo; director.stateT = 0; cullBuildings(); director.flipThen(time); }
+    if (k >= 1) { facing.a = director.flipTo; director.stateT = 0; director.flipThen(time); cullBuildings(); }   // 페이즈를 먼저 바꿔야 컬링이 양방향 창에서 보는 쪽 창으로 줄어든다
   } else if (director.phase === 'drive') {
     // 보스 지점 앞에서만 미리 감속(v²/2a) — 넘어가서 서면 恐龍이 문루 안에 선다. 카드 지점은 서지 않고 지나간다.
     const brake = stop && stop.boss && vpos.z <= stop.z + (vehicle.state.speed * vehicle.state.speed) / (2 * 5.5) + 0.5;
     vehicle.state.targetSpeed = brake ? 0 : director.driveSpeed;
     if (stop && stop.boss && vehicle.state.speed < 0.05 && vpos.z > stop.z && vpos.z <= stop.z + 6) vpos.z = stop.z;
     const d = districtAt(vpos.z);
-    if (d !== director.district) { director.district = d; if (time > 3) juice.banner(S.place(d.name), 2600); }
+    if (d !== director.district) { director.district = d; applyDistrict(d); juice.banner(S.place(d.name), 2600); }   // GO(0.9초) 뒤에 첫 구역 이름이 뜬다
     if (stop && vpos.z <= stop.z) {
       if (!stop.boss) {   // 시전 거리: 서지 않는다. 달리는 채로 한 장 고른다(고르는 동안 세계가 멈춘다).
         director.stopIdx++; juice.banner(S.stage(1, stop), 3000); juice.stamp('補');
@@ -446,7 +463,7 @@ function updateDirector(dt, time) {
     if (director.stateT > 2.2) {
       director.phase = 'pick';
       skills.offer('auto', () => {
-        director.stopIdx++; horde.budget = zombieCount; gun.state.bombs = gun.state.bombsMax;
+        director.stopIdx++; gun.state.bombs = gun.state.bombsMax;   // 정원·비율·속도는 startFlip → applyDistrict 가 구역 값으로 되돌린다
         juice.banner(S.roadOpen, 2200); juice.stamp('進');
         startFlip(Math.PI, () => { director.phase = 'drive'; }, game.time);
       });
@@ -474,7 +491,7 @@ function updateDirector(dt, time) {
 
 const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont'), contN = contEl.querySelector('.n');
 let frames = 0, acc = 0, last = performance.now(), hpShown = 100;
-window.__kb = { cam, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, skills, juice, fps: 0 };
+window.__kb = { cam, cull, cullBuildings, renderer, scene, camera, world, look, horde, gun, physics, game, audio, vehicle, director, bosses, pickups, skills, juice, fps: 0 };
 cullBuildings(); followLights(0, ROUTE.start);
 $('gauges').classList.add('hidden');   // 타이틀에선 장갑 게이지 대신 크레딧이 그 자리에 있다
 
@@ -539,7 +556,7 @@ renderer.setAnimationLoop((now) => {
     gun.state.firingPtr = false;
     gun.update(dt, time);
     skills.update(0, time);
-    vehicle.update(dt);
+    vehicle.update(0);   // dt 0 — 카드 선택 중 drive 의 목표 속도(5 m/s)가 남아 있어 마차가 1.2초에 6 m 굴러갔다(실측 -150.1→-157.6)
   }
   updateCamera(dt);
 

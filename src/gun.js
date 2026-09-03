@@ -355,7 +355,10 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   function aimAtScreen(cx, cy) {
     if (!camera) return;
     _ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); _rc.setFromCamera(_ndc, camera);
-    if (!_rc.ray.intersectPlane(_plane, _pt)) return;
+    // 보스·수리 상자처럼 키 큰 표적은 화면 광선이 그 부위 상자에 닿은 점을 쓴다 — 가슴 높이 평면만 쓰면 巨人 가슴을 클릭해도 보스 뒤 88 m 지면을 겨눈다(실측)
+    let th = null; for (const tg of targets) { const r = tg.raycast(_rc.ray, 400); if (r && r.t < (th ? th.t : Infinity)) th = r; }
+    if (th) _pt.copy(_rc.ray.origin).addScaledVector(_rc.ray.direction, th.t);
+    else if (!_rc.ray.intersectPlane(_plane, _pt)) return;
     muzzle.getWorldPosition(_o);
     const dx = _pt.x - _o.x, dz = _pt.z - _o.z;
     // 조준각은 포탑이 보는 쪽(state.facing) 기준의 상대각이다 — 추격전(뒤를 봄)에도 같은 식이 쓰인다

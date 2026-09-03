@@ -47,7 +47,7 @@ import { S } from './i18n.js';
 const COMBO_TIERS = [[5, S.comboTiers[0], 2], [12, S.comboTiers[1], 3], [22, S.comboTiers[2], 4], [40, S.comboTiers[3], 5]];
 const MILESTONES = [100, 300, 500, 1000, 2000].map((n, i) => [n, S.milestones[i]]);
 // 등급 기준(데모 자동조준 완주 점수를 상한으로 보정한다)
-export const RANKS = [['S', 2400000], ['A', 1500000], ['B', 800000], ['C', 300000], ['D', 0]];   // 데모 완주 3.06M 기준
+export const RANKS = [['S', 1200000], ['A', 750000], ['B', 400000], ['C', 150000], ['D', 0]];   // 추격 개편 뒤 데모 자동조준 완주 1.58M 기준(2026-09-03) — 옛 비율(S 78%·A 49%·B 26%·C 10%) 유지
 export function rankOf(score) { return RANKS.find(([, min]) => score >= min)[0]; }
 
 export function createJuice(hud) {

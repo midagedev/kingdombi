@@ -19,10 +19,12 @@ export const ROUTE = {
     { z: -300, name: '절 문 앞', sub: '종이 울리지 않는다', boss: 'giant', quota: 260, cap: 100, mix: { brute: 0.06, bomber: 0.12, runner: 0.16 } },
     { z: -450, name: '궁궐 광장', sub: '문이 열려 있다', boss: 'rex', quota: 380, cap: 130, mix: { brute: 0.08, bomber: 0.15, runner: 0.22 } },
   ],
+  // 추격 압박 곡선(2026-09-03): 구역이 바뀔 때 떼의 정원(cap, 전체 좀비 수 비율)·종류 비율(mix)·속도 배율(speed)이 오른다.
+  // speed 는 마차 5.0 m/s 를 보통형(3.6~5.2)이 따라잡을 만큼은 돼야 한다 — 1.15 면 절반, 1.3 이면 대부분이 붙는다.
   districts: [
-    { z0: 0, z1: -150, name: '초가 마을', choga: 0.85, wall: 0.25, props: ['haystack', 'jangdokdae', 'well', 'jige', 'chicken-coop', 'brush-fence', 'mortar-pestle', 'straw-mat'], lane: ['haystack', 'jige', 'straw-mat'] },
-    { z0: -150, z1: -300, name: '기와 골목', choga: 0.45, wall: 0.7, props: ['stone-lantern', 'jangdokdae', 'stone-wall', 'straw-mat', 'jangseung-pair', 'garden-rock', 'well'], lane: ['jangdokdae', 'haystack', 'jangseung'] },
-    { z0: -300, z1: -450, name: '육조 거리', choga: 0.1, wall: 0.9, props: ['stone-lantern', 'haetae', 'pagoda', 'rank-stones', 'ding-censer', 'stone-wall', 'danggan'], lane: ['stone-lantern', 'haetae', 'rank-stones'] },
+    { z0: 0, z1: -150, name: '초가 마을', choga: 0.85, wall: 0.25, cap: 0.75, speed: 1.15, mix: { brute: 0.02, bomber: 0.06, runner: 0.14 }, props: ['haystack', 'jangdokdae', 'well', 'jige', 'chicken-coop', 'brush-fence', 'mortar-pestle', 'straw-mat'], lane: ['haystack', 'jige', 'straw-mat'] },
+    { z0: -150, z1: -300, name: '기와 골목', choga: 0.45, wall: 0.7, cap: 0.9, speed: 1.22, mix: { brute: 0.04, bomber: 0.10, runner: 0.20 }, props: ['stone-lantern', 'jangdokdae', 'stone-wall', 'straw-mat', 'jangseung-pair', 'garden-rock', 'well'], lane: ['jangdokdae', 'haystack', 'jangseung'] },
+    { z0: -300, z1: -450, name: '육조 거리', choga: 0.1, wall: 0.9, cap: 1.0, speed: 1.3, mix: { brute: 0.07, bomber: 0.14, runner: 0.26 }, props: ['stone-lantern', 'haetae', 'pagoda', 'rank-stones', 'ding-censer', 'stone-wall', 'danggan'], lane: ['stone-lantern', 'haetae', 'rank-stones'] },
   ],
 };
 
@@ -118,7 +120,8 @@ function buildingRecord(kind, root, scene) {
   };
 }
 
-export function districtAt(z) { return ROUTE.districts.find((d) => z <= d.z0 && z > d.z1) || ROUTE.districts[ROUTE.districts.length - 1]; }
+// 출발점 뒤(z>0)도 첫 구역이다 — 예전엔 마지막 구역으로 떨어져 출발 직후 육조거리 규칙이 잠깐 적용됐다
+export function districtAt(z) { return ROUTE.districts.find((d) => z > d.z1) || ROUTE.districts[ROUTE.districts.length - 1]; }
 function nearStop(z, r = 18) { return ROUTE.stops.some((s) => Math.abs(s.z - z) < r); }
 // 사찰 언덕·궁궐 앞은 집을 비운다
 function blocked(x, z) {
@@ -146,8 +149,9 @@ export function buildWorld(scene, seed = 20260903) {
   hill.position.set(ROUTE.temple.x, ROUTE.temple.y / 2, ROUTE.temple.z); hill.receiveShadow = true; scene.add(hill);
 
   // ── 길 양편 집: 정면이 길을 본다. 왼쪽(x<0)은 +x 를, 오른쪽은 -x 를 향한다 ──
+  // 출발점 뒤(+z)로도 70 m 를 짓는다 — 추격 카메라가 뒤를 보므로 첫 10초 동안 빈 벌판이 화면을 채웠다(2026-09-03 실측)
   for (const side of [-1, 1]) {
-    let z = ROUTE.start - 26;
+    let z = ROUTE.start + 70;
     while (z > ROUTE.end - 6) {
       const d = districtAt(z);
       const depth = 13 + rand() * 5;              // 길 중심에서 집 중심까지
@@ -163,7 +167,7 @@ export function buildWorld(scene, seed = 20260903) {
   }
 
   // ── 소품: 길가(x≈±8) 12~20m 마다, 차선 안(|x|<3.5) 35m 마다 들이받을 것 하나 ──
-  for (let z = ROUTE.start - 20; z > ROUTE.end - 20; z -= 12 + rand() * 8) {
+  for (let z = ROUTE.start + 60; z > ROUTE.end - 20; z -= 12 + rand() * 8) {
     const d = districtAt(z);
     const side = rand() < 0.5 ? -1 : 1;
     const name = d.props[Math.floor(rand() * d.props.length)];

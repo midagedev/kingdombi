@@ -1,4 +1,4 @@
-// 수리 도구 상자: 호박색으로 빛나는 나무 상자. 달릴 땐 차선 위에 있어 들이받으면 먹고, 정차 땐 앞쪽에 떨어져 있어 쏘면 열린다(도구가 마차로 날아온다).
+// 수리 도구 상자: 호박색으로 빛나는 나무 상자. 달릴 땐 길가에 있어 지나친 뒤 뒤에서 쏘고, 정차 땐 앞쪽에 떨어져 있다. 2발 쏘면 열린다(도구가 마차로 날아온다).
 // 장갑이 유일한 자원이다 — 열 관리는 없다(2026-09-03). gun.targets 에 등록되어 총알이 맞는다.
 import * as THREE from 'three';
 import { S } from './i18n.js';
@@ -53,8 +53,7 @@ export function createPickups(scene, { vehicle, fx, audio, juice, onHeal, onScor
       const f = 0.7 + 0.3 * Math.sin(t * 4 + c.phase);
       c.glowMat.color.setHex(0xffb347).multiplyScalar(f);
       c.beacon.position.y = 1.5 + Math.sin(t * 2 + c.phase) * 0.12;
-      // 들이받아 먹기: 마차 정면 쐐기 구역
-      if (Math.abs(p.x - vp.x) < 2.0 && p.z < vp.z + 1 && p.z > vp.z - 4.2) open(c, time, 'ram');
+      // 들이받기는 없앴다(2026-09-03): 길가에 두고 지나친 뒤 뒤에서 쏜다 — 추격 카메라가 뒤를 봐서 먹는 순간이 보이지 않았다
     }
   }
   const P = { spawn, update, raycast, hit, crates, healMul: 1 };   // healMul: 스킬 '수리 강화' 가 2 로 올린다
