@@ -292,20 +292,21 @@ const skills = createSkills(scene, { horde, gun, vehicle, fx, audio, look, juice
 // 예전엔 차선 한복판에서 들이받아 먹었는데 그 순간이 화면 밖이라 +25 만 뜨고 아무것도 안 보였다(2026-09-03). 정차·보스전엔 앞쪽에 하나 더 떨어진다.
 for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + dayRand() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((dayRand() < 0.5 ? -1 : 1) * (3.6 + dayRand() * 1.4), z, 'lane');
 gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, time);
-// 비격진천뢰 폭발: 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판 파괴·피해
-gun.hooks.onBlast = (x, z, R, time) => {
-  juice.stamp('雷'); game.shake = Math.max(game.shake, 1.2);
+// 雷 다연장로켓: 발사 순간 스탬프, 착탄마다(12발) 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판·본체 피해 × mul(로켓 0.3)
+gun.hooks.onSalvo = () => { juice.stamp('雷'); game.shake = Math.max(game.shake, 0.5); };
+gun.hooks.onBlast = (x, z, R, time, mul = 1) => {
+  game.shake = Math.max(game.shake, 0.8);
   horde.crushNear(x, z, R, time);
   shoveBodies(x, z, R, 8, 8);
   const b = bosses.active;
   if (b && b.alive) {
     const c = new THREE.Vector3();
-    for (const p of b.parts) { if (p.destroyed || p.kind === 'body' || p.kind === 'core') continue; p.box.getCenter(c); if (Math.hypot(c.x - x, c.z - z) < R + 2) b.hit(p, 40, c.x, c.y, c.z, (c.x - x) / R, (c.z - z) / R, time); }   // 한 발로 쇠판이 다 벗겨지진 않게(48·70·90)
-    const bp = b.root.position; if (b.alive && Math.hypot(bp.x - x, bp.z - z) < R + 4) { b.hp -= 60; b.flash = 1; if (b.hp <= 0) b.hit(b.parts[0], 1, bp.x, 3, bp.z, 0, -1, time); }
+    for (const p of b.parts) { if (p.destroyed || p.kind === 'body' || p.kind === 'core') continue; p.box.getCenter(c); if (Math.hypot(c.x - x, c.z - z) < R + 2) b.hit(p, 40 * mul, c.x, c.y, c.z, (c.x - x) / R, (c.z - z) / R, time); }   // 한 발로 쇠판이 다 벗겨지진 않게(48·70·90)
+    const bp = b.root.position; if (b.alive && Math.hypot(bp.x - x, bp.z - z) < R + 4) { b.hp -= 60 * mul; b.flash = 1; if (b.hp <= 0) b.hit(b.parts[0], 1, bp.x, 3, bp.z, 0, -1, time); }
   }
-  const dv = Math.hypot(vpos.x - x, vpos.z - z); if (dv < R) damageArmor(10 * (1 - dv / R));
+  const dv = Math.hypot(vpos.x - x, vpos.z - z); if (dv < R) damageArmor(10 * mul * (1 - dv / R));
 };
-const bombNow = () => { if (game.started && !game.over && game.cont <= 0 && !game.paused) gun.throwBomb(game.time); };
+const bombNow = () => { if (game.started && !game.over && game.cont <= 0 && !game.paused) gun.fireSalvo(game.time); };
 $('bomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); bombNow(); });
 gun.hooks.onBombKey = bombNow;
 addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); bombNow(); } });
@@ -355,7 +356,7 @@ const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new 
 // 대치(보스)는 위에서 내려다보고, 추격은 낮게 깔아 마차를 화면 아래 1/3 에 두고 그 너머로 떼가 밀려온다.
 const cam = {
   land: { h: 12, d: 14.0, look: 32, drop: 3.2 }, port: { h: 17, d: 20, look: 28, drop: 5 },
-  chaseLand: { h: 9.5, d: 14.0, look: 30, drop: 3.4 }, chasePort: { h: 13, d: 18, look: 27, drop: 4.6 },
+  chaseLand: { h: 9.5, d: 14.0, look: 30, drop: 4.8 }, chasePort: { h: 13, d: 18, look: 27, drop: 4.6 },
 };
 // 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
 // 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
@@ -536,7 +537,7 @@ renderer.setAnimationLoop((now) => {
       gun.state.yaw += (THREE.MathUtils.clamp(ty, -1.5, 1.5) - gun.state.yaw) * Math.min(1, dt * 6);
       gun.state.pitch += (THREE.MathUtils.clamp(tp, -0.62, gun.state.pitchMax) - gun.state.pitch) * Math.min(1, dt * 6);
     }
-    if (director.phase === 'boss' && time - director.demoBombT > 13 && gun.state.bombs > 0) { director.demoBombT = time; gun.throwBomb(time); }
+    if (director.phase === 'boss' && time - director.demoBombT > 13 && gun.state.bombs > 0) { director.demoBombT = time; gun.fireSalvo(time); }
   }
   if (running) {
     updateDirector(dt, time);

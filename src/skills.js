@@ -65,6 +65,8 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
   // ── 공용: 자동공격 처치는 cause 'auto' ──
   const auto = (fn) => { horde.causeOverride = 'auto'; try { return fn(); } finally { horde.causeOverride = null; } };
   const vpos = vehicle.pos;
+  // 포탑이 보는 쪽 기준 앞거리(+ 앞 / − 뒤). 추격(horde.chase)은 뒤(+z)가 사냥터다 — 이게 없으면 箭·銃·霆 이 추격 내내 표적 0 (2026-09-03 실측: 270 마리 중 후보 0).
+  const ahead = (dz) => (horde.chase ? dz : -dz);
   const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _s = new THREE.Vector3(1, 1, 1), _z = new THREE.Vector3(0, 0, 1);
 
   // ── 옆 포수: 마차 양옆 소총 2정. 0.22초마다 16 m 안 가장 가까운 좀비를 쏜다 ──
@@ -101,7 +103,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
       for (let i = 0; i < horde.N; i++) {
         if (!horde.alive[i]) continue;
         const dx = horde.px[i] - vpos.x, dz = horde.pz[i] - vpos.z;
-        if (dx * g.sx < -1.5 || dz > 5) continue;   // 자기 쪽 절반, 마차 뒤는 제외
+        if (dx * g.sx < -1.5 || ahead(dz) < -5) continue;   // 자기 쪽 절반, 등 뒤는 제외
         const d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = i; }
       }
       g.cd = 0.22;
@@ -129,7 +131,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
     let best = -1, bs = -1;
     for (let i = 0; i < horde.N; i++) {
       if (!horde.alive[i]) continue;
-      const dz = horde.pz[i] - vpos.z, dx = horde.px[i] - vpos.x; if (dz > 4 || dz < -45 || Math.abs(dx) > 30) continue;
+      const dz = horde.pz[i] - vpos.z, dx = horde.px[i] - vpos.x; const a = ahead(dz); if (a < -4 || a > 45 || Math.abs(dx) > 30) continue;
       const score = (horde.type[i] === 1 ? 100 : 0) + Math.random() * 10 - Math.hypot(dx, dz) * 0.2;
       if (score > bs) { bs = score; best = i; }
     }
@@ -184,7 +186,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
   function pickTargets(n) {
     // 앞쪽 60 m 안 좀비 중 거리순 40명에서 무작위 n 명(같은 놈 중복 없이). 보스가 있으면 둘은 보스.
     const cand = [];
-    for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const dz = horde.pz[i] - vpos.z; if (dz > 2 || dz < -60 || Math.abs(horde.px[i] - vpos.x) > 30) continue; cand.push(i); }
+    for (let i = 0; i < horde.N; i++) { if (!horde.alive[i]) continue; const a = ahead(horde.pz[i] - vpos.z); if (a < -2 || a > 60 || Math.abs(horde.px[i] - vpos.x) > 30) continue; cand.push(i); }
     for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
     return cand.slice(0, n);
   }
@@ -203,7 +205,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
       mPos[slot * 3] = _w.x + (k % 3 - 1) * 0.4; mPos[slot * 3 + 1] = _w.y + 0.3; mPos[slot * 3 + 2] = _w.z;
       // 발사 방향: 위쪽 앞(고각 68°), 좌우 살짝 벌어짐
       const yaw = (k % 3 - 1) * 0.22 + (Math.random() - 0.5) * 0.1, el = 1.19 + (Math.random() - 0.5) * 0.12;
-      mVel[slot * 3] = Math.sin(yaw) * Math.cos(el) * BOOST_SPD; mVel[slot * 3 + 1] = Math.sin(el) * BOOST_SPD; mVel[slot * 3 + 2] = -Math.cos(yaw) * Math.cos(el) * BOOST_SPD;
+      mVel[slot * 3] = Math.sin(yaw) * Math.cos(el) * BOOST_SPD; mVel[slot * 3 + 1] = Math.sin(el) * BOOST_SPD; mVel[slot * 3 + 2] = -Math.cos(yaw) * Math.cos(el) * BOOST_SPD * (horde.chase ? -1 : 1);
       mOrgY[slot] = mPos[slot * 3 + 1]; mApexY[slot] = mOrgY[slot] + 9 + Math.random() * 5;
       mPhase[slot] = PH.WAIT; mIgn[slot] = time + k * 0.09;   // 점화 스태거
       mT[slot] = 0; mLife[slot] = 0; mHook[slot] = -1;
@@ -321,6 +323,7 @@ export function createSkills(scene, { horde, gun, vehicle, fx, audio, look, juic
   }
 
   function update(dt, time) {
+    rack.rotation.y = horde.chase ? Math.PI : 0;   // 발사대도 보는 쪽으로
     if (st.gunners) updateGunners(dt, time);
     if (st.thunder) updateThunder(dt, time);
     if (st.spikes && dt > 0) updateSpikes(dt, time);
