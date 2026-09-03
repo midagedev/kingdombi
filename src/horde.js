@@ -386,7 +386,7 @@ export function createHorde(scene, physics, {
       // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
       const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
       // 추격 낙오 62 m(전 95): 못 따라오는 놈이 파를 끝내지 못하게 붙잡는다 — 재배치돼 14~55 m 뒤에서 다시 온다
-      if (H.chase ? (dzt > H.lagger || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = H.tailDrop ? 0 : 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+      if (H.chase ? (dzt > 62 || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = H.tailDrop ? 0 : 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // 지붕 위·낙하 중(2026-09-03): seek·분리·회피 없이 제 갈 길만 간다. 지붕 위에선 마차 쪽으로 기어가며 용마루(top−0.5)→처마(top·0.55) 로 내려오고, AABB(처마선) 를 넘으면 살짝 뛰어 떨어진다.
       let air = false; const rb = roofB[i];
@@ -617,6 +617,6 @@ export function createHorde(scene, physics, {
 
   // 파 시작: 앞으로 n 마리를 소환할 수 있다(pool). 죽어 있는 슬롯은 곧바로 나올 수 있게 예약 시각을 당긴다. 재배치 대기는 그대로.
   function startWave(n, time) { H.pool = n; for (let i = 0; i < N; i++) if (!alive[i] && !relocate[i]) respawnAt[i] = time + Math.random() * 0.4; }
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, lagger: 62, tailDrop: false, seekHalfW: 99, seekRight: { x: 1, z: 0 }, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, tailDrop: false, seekHalfW: 99, seekRight: { x: 1, z: 0 }, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
   return H;
 }
