@@ -566,7 +566,7 @@ function updateWarns(time) {
     if (!horde.alive[i] || !horde.wind[i]) continue;
     warnV.set(horde.px[i], horde.py[i] + 1.1 * horde.scale[i], horde.pz[i]).project(camera); if (warnV.z > 1) continue;
     const x = THREE.MathUtils.clamp((warnV.x + 1) / 2 * innerWidth, 24, innerWidth - 24), y = THREE.MathUtils.clamp((1 - warnV.y) / 2 * innerHeight, 24, innerHeight - 24);
-    const k = THREE.MathUtils.clamp((time - horde.wind[i]) / 1.4, 0, 1), el = warnEls[n++];
+    const k = THREE.MathUtils.clamp((time - horde.wind[i]) / (1.4 * horde.windMul), 0, 1), el = warnEls[n++];
     el.style.transform = `translate(${x.toFixed(0)}px,${y.toFixed(0)}px) translate(-50%,-50%) scale(${(1.7 - 1.0 * k).toFixed(2)})`; el.style.opacity = '1';
   }
   for (let j = n; j < WARN_N; j++) warnEls[j].style.opacity = '0';
