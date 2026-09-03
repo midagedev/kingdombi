@@ -7,7 +7,7 @@ const IRON = new THREE.MeshStandardMaterial({ color: 0x15161a, metalness: 0.7, r
 const IRON2 = new THREE.MeshStandardMaterial({ color: 0x23252b, metalness: 0.65, roughness: 0.45 });
 const WOOD = new THREE.MeshStandardMaterial({ color: 0x1d150d, roughness: 0.9 });
 const box = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = true; x.receiveShadow = true; return x; };
-const cyl = (r, h, m, seg = 14) => { const x = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m); x.castShadow = true; return x; };
+const cyl = (r, h, m, seg = 20) => { const x = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m); x.castShadow = true; return x; };
 
 export function createVehicle(scene, physics, { path, s = 0 } = {}) {
   // 마차는 레일 s 위를 달린다(src/path.js). 위치·헤딩은 path.pose 가 준다 — 코너는 반경 R 의 호.
@@ -19,6 +19,11 @@ export function createVehicle(scene, physics, { path, s = 0 } = {}) {
   // 차체: 낮은 철갑 상자 + 위쪽 테두리 판 + 뒤쪽 포좌
   const hull = box(2.9, 1.1, 5.0, IRON); hull.position.y = 1.15; body.add(hull);
   const deck = box(3.1, 0.12, 5.2, IRON2); deck.position.y = 1.76; body.add(deck);
+  // 갑판 널판(2026-09-03): 판 사이 홈이 깊이 윤곽선으로 그려진다. 모서리 쇠띠·앞뒤 보강 앵글
+  for (let k = 0; k < 7; k++) { const plank = box(0.38, 0.03, 5.0, WOOD); plank.position.set(-1.29 + k * 0.43, 1.835, 0); body.add(plank); }
+  for (const sx of [-1, 1]) { const band = box(0.06, 0.14, 5.25, IRON); band.position.set(sx * 1.53, 1.78, 0); body.add(band); }
+  for (const sz of [-2.55, 2.55]) { const band = box(3.15, 0.14, 0.06, IRON); band.position.set(0, 1.78, sz); body.add(band); }
+  for (const sx of [-1, 1]) for (const sz of [-2.4, 2.4]) { const post = cyl(0.05, 0.55, IRON, 10); post.position.set(sx * 1.5, 2.02, sz); body.add(post); }
   for (const sx of [-1, 1]) { const rail = box(0.08, 0.5, 5.0, IRON2); rail.position.set(sx * 1.5, 2.0, 0); body.add(rail); }
   const backPlate = box(3.0, 0.5, 0.08, IRON2); backPlate.position.set(0, 2.0, 2.55); body.add(backPlate);
   // 측면 철판 4장: 번갈아 튀어나와 깊이 윤곽선이 가로줄로 그려진다(잉크 룩에선 선이 곧 디테일)
@@ -50,7 +55,9 @@ export function createVehicle(scene, physics, { path, s = 0 } = {}) {
     const w = new THREE.Group(); w.position.set(sx * 1.6, 0.78, sz); root.add(w);
     const rim = cyl(0.78, 0.16, IRON, 18); rim.rotation.z = Math.PI / 2; w.add(rim);
     const hub = cyl(0.14, 0.3, IRON2); hub.rotation.z = Math.PI / 2; w.add(hub);
-    for (let k = 0; k < 8; k++) { const sp = box(0.06, 1.4, 0.06, WOOD); sp.rotation.x = k * Math.PI / 8; w.add(sp); }
+    for (let k = 0; k < 12; k++) { const sp = box(0.05, 1.4, 0.07, WOOD); sp.rotation.x = k * Math.PI / 12; w.add(sp); }
+    const tyre = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.06, 8, 32), IRON2); tyre.rotation.y = Math.PI / 2; tyre.castShadow = true; w.add(tyre);
+    for (let k = 0; k < 12; k++) { const bolt = new THREE.Mesh(rivetGeo, IRON2); const a = k * Math.PI / 6; bolt.position.set(sx * 0.1, Math.cos(a) * 0.62, Math.sin(a) * 0.62); w.add(bolt); }
     wheels.push(w);
   }
   for (const sz of [-1.6, 1.7]) { const axle = cyl(0.06, 3.3, IRON); axle.rotation.z = Math.PI / 2; axle.position.set(0, 0.78, sz); root.add(axle); }

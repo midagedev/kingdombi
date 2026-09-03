@@ -169,23 +169,23 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
   function spawnRex(x, z, time, axis) {
     const root = new THREE.Group(); root.position.set(x, 0, z); scene.add(root);
     const ink = INK(), plate = PLATE(), bone = BONE(), dark = DARK();
-    const R = rexParts({ ink, bone, dark });
+    const R = rexParts({ ink, bone, dark, glow: new THREE.MeshBasicMaterial({ color: VIOLET }) }); R.veins.layers.set(LAYER_SPOT);
     const put = (m, parent, px = 0, py = 0, pz = 0) => { m.position.set(px, py, pz); parent.add(m); return m; };
     const hips = new THREE.Group(); hips.position.y = 4.6; root.add(hips);
     // 몸통(살짝 앞으로 기운 타원) + 양 옆구리 갈비뼈 + 등가시 + 포승
     const bodyG = new THREE.Group(); bodyG.position.set(0, 0.2, 0.4); bodyG.rotation.x = -0.12; hips.add(bodyG);
-    const body = put(R.body, bodyG); put(R.ribsL, bodyG); put(R.ribsR, bodyG); put(R.spine, bodyG); put(R.bodyRope, bodyG);
+    const body = put(R.body, bodyG); put(R.ribsL, bodyG); put(R.ribsR, bodyG); put(R.spine, bodyG); put(R.bodyRope, bodyG); put(R.wounds, bodyG); put(R.veins, bodyG);
     const neck = new THREE.Group(); neck.position.set(0, 1.2, -3.0); hips.add(neck); neck.rotation.x = 0.55;
-    put(R.neck, neck, 0, 0.5, -1.1); put(R.neckSpikes, neck, 0, 0.5, -1.1);
+    put(R.neck, neck); put(R.neckSpikes, neck);
     const headG = new THREE.Group(); headG.position.set(0, 1.0, -2.3); neck.add(headG); headG.rotation.x = -0.75;
-    const skull = put(R.skull, headG, 0, 0.35, -0.4); put(R.skullRidge, headG, 0, 0.35, -0.4); put(R.sockets, headG, 0, 0.35, -0.4);
+    const skull = put(R.skull, headG); put(R.skullRidge, headG); put(R.sockets, headG);
     const jaw = new THREE.Group(); jaw.position.set(0, -0.3, -0.3); headG.add(jaw);
-    put(R.jaw, jaw, 0, -0.25, 0); put(R.jawSag, jaw, 0, -0.25, 0);
+    put(R.jaw, jaw); put(R.jawSag, jaw);
     for (let i = 0; i < 7; i++) for (const sx of [-1, 1]) {
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 5), bone); tooth.rotation.x = Math.PI; tooth.position.set(sx * 0.62, -0.42, -0.5 - i * 0.38); headG.add(tooth);
-      const tooth2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 5), bone); tooth2.position.set(sx * 0.55, 0.02, -0.6 - i * 0.36); jaw.add(tooth2);
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 5), bone); tooth.rotation.x = Math.PI; tooth.position.set(sx * (0.62 - i * 0.03), -0.2, -1.0 - i * 0.36); headG.add(tooth);
+      const tooth2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 5), bone); tooth2.position.set(sx * (0.52 - i * 0.03), 0.22, -1.0 - i * 0.34); jaw.add(tooth2);
     }
-    for (const sx of [-1, 1]) { const eye = glowMesh(new THREE.SphereGeometry(0.19, 8, 6)); eye.position.set(sx * 0.72, 0.9, -1.75); headG.add(eye); }
+    for (const sx of [-1, 1]) { const eye = glowMesh(new THREE.SphereGeometry(0.19, 8, 6)); eye.position.set(sx * 0.74, 0.85, -1.5); headG.add(eye); }
     // 꼬리 6마디(위 가시 한 줄)
     const tail = []; let par = hips; let tp = new THREE.Vector3(0, 0.3, 3.4);
     for (let i = 0; i < 6; i++) { const g = new THREE.Group(); g.position.copy(tp); par.add(g); const s = 1 - i * 0.13; g.add(R.tail(s)); tail.push(g); par = g; tp = new THREE.Vector3(0, 0, 1.9); }
@@ -211,7 +211,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     ];
     for (const p of plates) b.addPart(p, 'plate', 70);
     // 머리 쇠판: 투구처럼 두껍게(얇으면 30m 에서 총알 산포에 다 빗나간다)
-    const skullPlates = [-1, 1].map((sd) => put(mesh(helmetHalf(1.15, 2.6, 0.22, sd), plate), headG, 0, 0.45, -1.1));   // 투구 두 쪽: 두개골 위를 덮는 반원통 껍질 + 정중선 볏
+    const skullPlates = [-1, 1].map((sd) => put(mesh(helmetHalf(1.15, 2.4, 0.22, sd), plate), headG, 0, 0.55, -0.7));   // 투구 두 쪽: 두개골 위를 덮는 반원통 껍질 + 정중선 볏
     for (const p of skullPlates) b.addPart(p, 'skull', 90);
     const coreDark = new THREE.Mesh(new THREE.OctahedronGeometry(0.75, 0), ink); coreDark.position.set(0, -0.3, -3.35); hips.add(coreDark);
     const core = glowMesh(new THREE.OctahedronGeometry(0.68, 0)); core.position.copy(coreDark.position); hips.add(core);

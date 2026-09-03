@@ -63,7 +63,7 @@ const ANIM_GLSL = /* glsl */`
   attribute vec2 iHitInfo;  // 마지막 피격: x = 좌우(−1..1, 모델 기준) · y = 높이(0..2 m)
   attribute float iGone;    // 잃은 뼈 비트마스크(2 머리 · 3/5 왼팔 · 4/6 오른팔)
   uniform float uTime; uniform float uDead;
-  float goneBit(float bone) { return step(1.0, mod(floor(iGone / pow(2.0, bone) + 0.5), 2.0)); }
+  float goneBit(float bone) { return step(1.0, mod(floor(iGone / pow(2.0, bone)), 2.0)); }   // 2의 거듭제곱 나눗셈은 float 에서 정확 — 반올림을 넣으면 아래 비트가 위로 샌다
   vec3 bonePivot(float bone) { if (bone == 2.0) return vec3(0.0, 1.58, 0.0); if (bone == 3.0 || bone == 5.0) return vec3(-0.27, 1.54, 0.0); return vec3(0.27, 1.54, 0.0); }
   uniform vec3 uAimO, uAimD; uniform float uAimT;   // 조준 광선(총구 원점·방향·첫 차단물까지 거리) — 광선 위에 선 좀비는 vMark=1 로 표시된다
   varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark;

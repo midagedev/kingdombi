@@ -12,6 +12,7 @@ import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
 import { createSky } from './sky.js';
 import { createGround } from './ground.js';
+import { createExplosions } from './explosion.js';
 import { createFires } from './fire.js';
 import { createJuice, rankOf } from './juice.js';
 import { createCine } from './cine.js';
@@ -183,6 +184,7 @@ const fx = {
   shards: createDebris(scene, { count: 700, color: 0x8d8b86, size: 0.13, gravity: -30, life: 2.6 }),
   blood: createDebris(scene, { count: 500, layer: LAYER_SPOT, color: 0xc1121f, size: 0.1, gravity: -32, bounce: 0.02, life: 1.1 }),
   mist: createMist(scene),
+  explosions: createExplosions(scene),
   gibs: createDebris(scene, { count: 400, color: 0x141210, size: 0.09, gravity: -30, bounce: 0.05, life: 1.6 }),   // 살점: 잉크색, 세계 레이어
   decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
   brass: createDebris(scene, { count: 240, layer: LAYER_SPOT, color: 0xd9a64a, size: 0.08, gravity: -22, bounce: 0.35, life: 1.4 }),   // 탄피
@@ -251,6 +253,7 @@ horde.hooks.onExplode = (x, z, time) => {
   fx.shards.burst(x, 0.5, z, 30, { dirY: 1.0, spread: 1.5, power: 10, scale: 0.9, time });
   fx.gibs.burst(x, 1.0, z, 30, { dirY: 0.9, spread: 1.6, power: 11, scale: 1.3, time });
   fx.decals.add(x, z, 3.2, time);
+  fx.explosions.boom(x, 0.9, z, 4.6, true);
   look.state.flash = Math.max(look.state.flash, 0.5);
   audio.collapse(0.9);
   juice.stamp('爆');
@@ -573,7 +576,7 @@ renderer.setAnimationLoop((now) => {
     if (game.pendingDamage > 0) { const d = Math.min(game.pendingDamage, 9 * dt); game.pendingDamage -= d; if (!game.god) game.hp -= d; }
     gun.update(dt, time, rawDt);
     physics.step(dt, time);
-    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.mist.update(dt, time); fx.gibs.update(dt, time); fx.brass.update(dt, time); fx.decals.update(time);
+    fx.shards.update(dt, time); fx.blood.update(dt, time); fx.mist.update(dt, time); fx.explosions.update(dt); fx.gibs.update(dt, time); fx.brass.update(dt, time); fx.decals.update(time);
     audio.setGroan(Math.min(1, horde.stats.alive / 200) * 0.3);
   } else {
     horde.update(0, time);           // 정지 포즈 유지(타이틀 뒤 배경·카드 선택 중)

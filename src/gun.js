@@ -4,6 +4,7 @@ import { LAYER_SPOT } from './look.js';
 import { MIN_PART_VOLUME } from './world.js';
 
 const IRON = new THREE.MeshStandardMaterial({ color: 0x1a1b1e, metalness: 0.75, roughness: 0.42 });
+const IRON2 = new THREE.MeshStandardMaterial({ color: 0x2a2c33, metalness: 0.65, roughness: 0.45 });
 const WOOD = new THREE.MeshStandardMaterial({ color: 0x1d150d, roughness: 0.9 });
 const BRASS = new THREE.MeshStandardMaterial({ color: 0x8a7a48, metalness: 0.8, roughness: 0.3 });
 
@@ -34,13 +35,13 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   const yoke = box(0.46, 0.08, 0.5, IRON); yoke.position.set(0, -0.02, 0); pitchPivot.add(yoke);
   // 약실 + 호퍼 + 크랭크
   const breech = cyl(0.19, 0.5, IRON, 16); breech.rotation.x = Math.PI / 2; breech.position.set(0, 0.16, 0.25); pitchPivot.add(breech);
-  const hopper = box(0.26, 0.34, 0.2, BRASS); hopper.position.set(0, 0.5, 0.2); pitchPivot.add(hopper);
+  const hopper = box(0.12, 0.3, 0.16, IRON2); hopper.position.set(0, 0.36, 0.25); pitchPivot.add(hopper);
   const crank = new THREE.Group(); crank.position.set(0.24, 0.16, 0.45); pitchPivot.add(crank);
   const crankArm = box(0.04, 0.22, 0.04, IRON); crankArm.position.y = 0.11; crank.add(crankArm);
   const crankKnob = cyl(0.03, 0.14, WOOD); crankKnob.rotation.z = Math.PI / 2; crankKnob.position.set(0.08, 0.22, 0); crank.add(crankKnob);
   // 총열 묶음 (회전)
   const barrels = new THREE.Group(); barrels.position.set(0, 0.16, -0.1); pitchPivot.add(barrels);
-  const barrelGeo = new THREE.CylinderGeometry(0.034, 0.034, 1.25, 10);
+  const barrelGeo = new THREE.CylinderGeometry(0.034, 0.038, 1.25, 16);
   const barrelHot = new THREE.MeshBasicMaterial({ color: 0x000000 });
   const barrelHotMeshes = [];
   for (let k = 0; k < 6; k++) {
@@ -48,7 +49,15 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const b = new THREE.Mesh(barrelGeo, IRON); b.rotation.x = Math.PI / 2; b.position.set(Math.cos(a) * 0.095, Math.sin(a) * 0.095, -0.65); b.castShadow = true; barrels.add(b);
     const h = new THREE.Mesh(barrelGeo, barrelHot); h.rotation.x = Math.PI / 2; h.position.copy(b.position); h.layers.set(LAYER_SPOT); barrels.add(h); barrelHotMeshes.push(h);
   }
-  for (const z of [-0.2, -0.75, -1.2]) { const plate = cyl(0.15, 0.05, IRON, 16); plate.rotation.x = Math.PI / 2; plate.position.set(0, 0, z); barrels.add(plate); }
+  // 총열 묶음 디테일(2026-09-03): 총구 나팔·구멍 뚫린 냉각 재킷 고리·약실 리브·탄창 드럼 — 원기둥 6개는 장난감이었다
+  for (const z of [-0.2, -0.75, -1.2]) { const plate = cyl(0.15, 0.05, IRON, 24); plate.rotation.x = Math.PI / 2; plate.position.set(0, 0, z); barrels.add(plate); }
+  for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; const hider = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.036, 0.09, 12), IRON); hider.rotation.x = Math.PI / 2; hider.position.set(Math.cos(a) * 0.095, Math.sin(a) * 0.095, -1.27); barrels.add(hider); }
+  for (let k = 0; k < 7; k++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.012, 6, 24), IRON2); ring.position.z = -0.3 - k * 0.13; barrels.add(ring); }
+  const axleRod = cyl(0.028, 1.4, IRON2, 10); axleRod.rotation.x = Math.PI / 2; axleRod.position.z = -0.65; barrels.add(axleRod);
+  for (let k = 0; k < 4; k++) { const rib = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.014, 6, 24), IRON2); rib.position.set(0, 0.16, 0.05 + k * 0.12); pitchPivot.add(rib); }
+  { const drum = cyl(0.17, 0.22, BRASS, 20); drum.rotation.z = Math.PI / 2; drum.position.set(0, 0.52, 0.2); pitchPivot.add(drum); const lid = cyl(0.19, 0.04, IRON2, 20); lid.rotation.z = Math.PI / 2; lid.position.set(0.12, 0.52, 0.2); pitchPivot.add(lid); }
+  for (let k = 0; k < 6; k++) { const rnd = cyl(0.016, 0.11, BRASS, 8); rnd.position.set(-0.11 + k * 0.045, 0.34, 0.31); pitchPivot.add(rnd); }   // 급탄 벨트 탄약
+  { const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.38, 20, 1, true, -0.9, 1.8), IRON2); shield.rotation.x = Math.PI / 2; shield.rotation.y = Math.PI; shield.position.set(0, 0.16, -0.05); shield.castShadow = true; pitchPivot.add(shield); }   // 반원 방탄판
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.16, -1.4); pitchPivot.add(muzzle);
 
   // 총구 화염: 스팟 레이어 스프라이트 + 세계를 비추는 포인트 라이트
@@ -442,13 +451,8 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     vertexShader: 'attribute float aAlpha; varying float vA; void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'varying float vA; void main(){ if (vA < 0.01) discard; gl_FragColor = vec4(vec3(0.70, 0.68, 0.64), vA * 0.62); }' })); ribbon.frustumCulled = false; scene.add(ribbon);
   // 착탄 연출 3겹: 화구 스프라이트(호박 → 흰, 0.4초에 3 → 16 m) + 바닥 충격파 링(0.35초에 1 → 11 m) + 연기 뭉치(1.5초, 3 → 10 m 로 부풀며 오른다)
-  const BURSTS = 12, bursts = [], burstBorn = new Float32Array(BURSTS).fill(-1e9); let burstCur = 0;
-  for (let i = 0; i < BURSTS; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, color: 0xffc070 })); sp.layers.set(LAYER_SPOT); sp.visible = false; scene.add(sp); bursts.push(sp); }
-  const SHOCKS = 12, shocks = [], shockBorn = new Float32Array(SHOCKS).fill(-1e9); let shockCur = 0;
-  { const g = new THREE.RingGeometry(0.85, 1.0, 40); g.rotateX(-Math.PI / 2); for (let i = 0; i < SHOCKS; i++) { const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); m.layers.set(LAYER_SPOT); m.visible = false; scene.add(m); shocks.push(m); } }
+  // 착탄 폭발은 src/explosion.js(fx.explosions) — 화구·불티·충격파·먹 연기·그을음·실광원
   const smokeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 4, 32, 32, 30); r.addColorStop(0, 'rgba(255,255,255,0.9)'); r.addColorStop(0.5, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
-  const SMOKES = 28, smokes = [], smokeBorn = new Float32Array(SMOKES).fill(-1e9); let smokeCur = 0;
-  for (let i = 0; i < SMOKES; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, depthWrite: false, transparent: true, color: 0x5e5b56 })); sp.visible = false; scene.add(sp); smokes.push(sp); }
   // 슬롯 상태. 베지어 제어점 4개(a=발사구, c1=그 바로 위, c2=표적 바로 위, b=표적)
   const rk = { on: new Uint8Array(MAXR), t0: new Float32Array(MAXR), T: new Float32Array(MAXR), a: new Float32Array(MAXR * 3), c1: new Float32Array(MAXR * 3), c2: new Float32Array(MAXR * 3), b: new Float32Array(MAXR * 3), k: new Uint8Array(MAXR) };
   const _rp = new THREE.Vector3(), _rd = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rs = new THREE.Vector3(), _rm = new THREE.Matrix4();
@@ -528,9 +532,6 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (lockDirty) { locks.instanceMatrix.needsUpdate = true; lockDots.instanceMatrix.needsUpdate = true; }
     if (ribDirty) { ribGeo.attributes.position.needsUpdate = true; ribGeo.attributes.aAlpha.needsUpdate = true; }
     readyDots.count = Math.min(NT, Math.round(Math.max(0, state.bombs) / Math.max(1, state.bombsMax) * NT));
-    for (let i = 0; i < BURSTS; i++) { if (!bursts[i].visible) continue; const a = (time - burstBorn[i]) / 0.4; if (a > 1) { bursts[i].visible = false; continue; } bursts[i].scale.setScalar(3 + 13 * a); bursts[i].material.opacity = 1 - a * a; bursts[i].material.color.setRGB(1, 0.75 + 0.25 * a, 0.44 + 0.56 * a); }
-    for (let i = 0; i < SHOCKS; i++) { if (!shocks[i].visible) continue; const a = (time - shockBorn[i]) / 0.35; if (a > 1) { shocks[i].visible = false; continue; } const sc = 1 + 10 * Math.sqrt(a); shocks[i].scale.set(sc, 1, sc); shocks[i].material.opacity = 1 - a; }
-    for (let i = 0; i < SMOKES; i++) { if (!smokes[i].visible) continue; const a = (time - smokeBorn[i]) / 1.5; if (a > 1) { smokes[i].visible = false; continue; } smokes[i].scale.setScalar(3 + 7 * a); smokes[i].position.y = 1.6 + 2.6 * a; smokes[i].material.opacity = 0.62 * (1 - a) * (1 - a); }
   }
   // 착탄: 반경 7.5 m 좀비 즉사(main 의 onBlast), 건물은 좁게(3.5 m — 20발이 길가 집을 통째로 밀어 버리지 않게), 보스 피해는 폭탄의 0.16배(20발 합이 폭탄 3.2개 분 — 실측 巨人 한 번에 ≈120)
   function rocketImpact(x, z, k, time) {
@@ -539,9 +540,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     fx.blood.burst(x, 1.0, z, 14, { dirY: 0.8, spread: 1.6, power: 11, scale: 1.2, time });
     fx.gibs?.burst(x, 1.0, z, 10, { dirY: 0.9, spread: 1.5, power: 10, scale: 1.2, time });
     fx.decals.add(x, z, 3.2, time);
-    const bi = burstCur; burstCur = (burstCur + 1) % BURSTS; bursts[bi].position.set(x, 1.8, z); bursts[bi].visible = true; burstBorn[bi] = time; bursts[bi].material.rotation = Math.random() * 6.3;
-    const si = shockCur; shockCur = (shockCur + 1) % SHOCKS; shocks[si].position.set(x, 0.12, z); shocks[si].visible = true; shockBorn[si] = time;
-    const mi = smokeCur; smokeCur = (smokeCur + 1) % SMOKES; smokes[mi].position.set(x + (Math.random() - 0.5) * 2, 1.6, z + (Math.random() - 0.5) * 2); smokes[mi].visible = true; smokeBorn[mi] = time; smokes[mi].material.rotation = Math.random() * 6.3;
+    fx.explosions?.boom(x, 0.5, z, 3.8, false);
     spark(x, 0.9, z, time);
     look.state.flash = Math.min(0.9, look.state.flash + 0.28);
     audio.collapse(1.0); if (k % 5 === 0) audio.thunder();   // 우레는 다섯 발에 한 번 — 20번 겹치면 소음

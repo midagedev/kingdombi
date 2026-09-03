@@ -27,8 +27,6 @@ export function ribs(n, r0, gap, tube, side = 1, axis = 'y') {
   }
   return merge(gs);
 }
-/** 4각 사다리 마디(주둥이·턱): 면이 축에 정렬되게 45° 돌린다 */
-const sq4 = (rt, rb, h) => { const g = tapered(rt, rb, h, 4); g.rotateY(Math.PI / 4); return g; };
 /** 등가시: z 축(등) 방향으로 n개, 가운데가 길다 */
 export function spikes(n, len, base, span, axis = 'z') {
   const gs = [];
@@ -39,9 +37,9 @@ export function spikes(n, len, base, span, axis = 'z') {
 // 굽은 갑주판: 반지름 R 의 원통 껍질(두께 d, 앞뒤 두 겹 + 위아래 테) + 테두리 못 + 세로 보강대. 앞면(+z)이 바깥.
 export function rivetedPlate(w, h, d) {
   const R = w * 0.9, th = w / R, gs = [];
-  const shell = (rad, hh) => { const g = new THREE.CylinderGeometry(rad, rad, hh, 10, 1, true, -th / 2, th); g.rotateY(Math.PI); g.translate(0, 0, -R + d / 2); return g; };   // 원통 중심을 뒤로 밀어 판 앞면이 z≈+d/2 에 오게
+  const shell = (rad, hh) => { const g = new THREE.CylinderGeometry(rad, rad, hh, 10, 1, true, -th / 2, th); g.translate(0, 0, -R + d / 2); return g; };   // 호는 +z 를 중심으로 열린다(x=r sinθ, z=r cosθ). 원통 중심을 뒤로 밀어 판 앞면이 z≈+d/2
   gs.push(shell(R, h), shell(R - d, h));
-  for (const y of [-h / 2, h / 2]) { const ring = new THREE.TorusGeometry(R - d / 2, d / 2, 4, 10, th); ring.rotateX(Math.PI / 2); ring.rotateY(Math.PI / 2 + Math.PI - th / 2); ring.translate(0, y, -R + d / 2); gs.push(ring); }
+  for (const y of [-h / 2, h / 2]) { const ring = new THREE.TorusGeometry(R - d / 2, d / 2, 4, 10, th); ring.rotateX(Math.PI / 2); ring.rotateY(-Math.PI / 2 + th / 2); ring.translate(0, y, -R + d / 2); gs.push(ring); }   // 토러스 호(+x 시작) → XZ 면에서 +z 중심 ±th/2
   const r = Math.min(w, h) * 0.06, nx = Math.max(3, Math.round(w / (r * 6))), ny = Math.max(2, Math.round(h / (r * 6)));
   for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
     if (i !== 0 && i !== nx - 1 && j !== 0 && j !== ny - 1) continue;
@@ -54,7 +52,7 @@ export function rivetedPlate(w, h, d) {
 /** 투구 반쪽: z 축을 따라 놓인 반원통 껍질(side ±1 = 좌/우 반). 두개골 위에 덮인다 */
 export function helmetHalf(R, len, d, side) {
   const gs = [];
-  const sh = (rad) => { const g = new THREE.CylinderGeometry(rad, rad * 0.8, len, 8, 1, true, side > 0 ? 0 : Math.PI / 2, Math.PI / 2); g.rotateX(-Math.PI / 2); return g; };   // 위 사분면 하나(+y 쪽)
+  const sh = (rad) => { const g = new THREE.CylinderGeometry(rad, rad * 0.8, len, 8, 1, true, side > 0 ? 0 : -Math.PI / 2, Math.PI / 2); g.rotateX(-Math.PI / 2); return g; };   // θ=0 이 +z(→ rotateX 뒤 +y 정상). 오른쪽 [0,π/2] · 왼쪽 [−π/2,0]
   gs.push(sh(R), sh(R - d));
   // 정중선 볏
   gs.push(tr(new THREE.BoxGeometry(d * 1.2, R * 0.35, len * 0.9), side * d * 0.7, R * 0.95, 0));
@@ -126,35 +124,39 @@ export function giantParts(S, { ink, bone, dark }) {
   return P;
 }
 
-// ── 恐龍 부품 ──
-export function rexParts({ ink, bone, dark }) {
+// ── 恐龍 부품(2026-09-03 재조형 2차: 상자·4각 마디 없이 겹친 구 덩어리, 세그먼트 20) ──
+export function rexParts({ ink, bone, dark, glow }) {
   const P = {};
-  // 몸통: 앞이 두꺼운 타원 + 가슴 갈비뼈 양쪽 + 등가시 + 엉덩이 근육
-  P.body = mesh(merge([blob(1.7, 1.0, 1.05, 2.1, 14), tr(blob(1.2, 1.15, 0.9, 1.0, 12), 0, -0.3, 2.2), tr(blob(1.3, 1.0, 0.85, 1.1, 12), 0, 0.2, -2.3)]), ink);
-  P.ribsL = mesh(tr(ribs(7, 1.85, 0.36, 0.08, -1, 'z'), 0, 0.1, -1.3), bone);
-  P.ribsR = mesh(tr(ribs(7, 1.85, 0.36, 0.08, 1, 'z'), 0, 0.1, -1.3), bone);
-  P.spine = mesh(tr(spikes(9, 0.9, 0.16, 5.6, 'z'), 0, 1.55, 0.1), bone);
-  P.bodyRope = mesh(tr(rx(ropeWrap(3, 1.75, 0.08, 0.9), Math.PI / 2), 0, 0.1, 0.4), dark);
-  // 목: 굽은 마디 + 아래 늘어진 살
-  P.neck = mesh(merge([rx(tapered(0.75, 1.0, 2.6, 12), Math.PI / 2), tr(blob(0.6, 1, 0.7, 1.2), 0, -0.55, -0.4)]), ink);
-  P.neckSpikes = mesh(tr(spikes(4, 0.55, 0.12, 2.0, 'z'), 0, 0.8, 0), bone);
-  // 두개골: 눌린 구 + 주둥이(앞이 좁은 사다리) + 눈두덩 + 코 + 눈구멍
-  P.skull = mesh(merge([blob(1.0, 1.0, 0.75, 1.1, 12), tr(rx(sq4(0.75, 1.3, 2.6), Math.PI / 2), 0, -0.05, -1.9), tr(blob(0.45, 1, 0.6, 1), -0.6, 0.55, -0.6), tr(blob(0.45, 1, 0.6, 1), 0.6, 0.55, -0.6), tr(blob(0.3, 1, 0.6, 1.4), 0, 0.35, -2.9)]), ink);
-  P.skullRidge = mesh(tr(spikes(5, 0.45, 0.09, 1.6, 'z'), 0, 0.85, -0.6), bone);
-  P.sockets = mesh(merge([tr(blob(0.28, 1, 1, 0.7), -0.7, 0.55, -1.15), tr(blob(0.28, 1, 1, 0.7), 0.7, 0.55, -1.15)]), dark);
-  P.jaw = mesh(merge([tr(rx(sq4(0.65, 1.15, 2.6), Math.PI / 2), 0, -0.25, -1.4), tr(blob(0.55, 1.2, 0.6, 0.8), 0, -0.3, 0.1)]), ink);
+  const B = (r, sx = 1, sy = 1, sz = 1) => blob(r, sx, sy, sz, 20);
+  // 몸통: 가슴·배·엉덩이·등 근육 네 덩어리가 겹쳐 한 등줄기를 만든다(옛 상자 3.0×3.2×6.4 와 같은 범위)
+  P.body = mesh(merge([tr(B(1.75, 1.0, 1.05, 1.35), 0, 0.1, -1.2), tr(B(1.6, 1.05, 0.95, 1.3), 0, -0.25, 0.6), tr(B(1.5, 1.1, 1.0, 1.15), 0, 0.15, 2.3), tr(B(0.9, 1.0, 0.8, 1.6), 0, 1.0, 0.4)]), ink);
+  P.ribsL = mesh(tr(ribs(7, 1.9, 0.36, 0.09, -1, 'z'), 0, 0.1, -2.5), bone);
+  P.ribsR = mesh(tr(ribs(7, 1.9, 0.36, 0.09, 1, 'z'), 0, 0.1, -2.5), bone);
+  P.spine = mesh(tr(spikes(11, 0.85, 0.15, 5.8, 'z'), 0, 1.75, 0.3), bone);
+  P.bodyRope = mesh(tr(rx(ropeWrap(3, 1.8, 0.08, 0.9), Math.PI / 2), 0, 0.1, 0.6), dark);
+  // 썩은 상처: 살이 파인 어둠 덩어리 + 그 둘레 보라 핏줄(스팟 레이어 — 좀비 문법)
+  P.wounds = mesh(merge([tr(B(0.55, 1.0, 0.7, 1.2), 1.55, 0.35, 0.9), tr(B(0.4, 1.0, 0.6, 1.0), -1.5, -0.4, 1.6), tr(B(0.35, 1, 0.7, 0.9), 1.2, 0.9, -2.6)]), dark);
+  P.veins = mesh(merge([tr(ry(new THREE.TorusGeometry(0.62, 0.035, 5, 14, Math.PI * 1.3), Math.PI / 2), 1.62, 0.35, 0.9), tr(ry(new THREE.TorusGeometry(0.48, 0.03, 5, 12, Math.PI * 1.1), -Math.PI / 2), -1.56, -0.4, 1.6), tr(new THREE.TorusGeometry(1.86, 0.03, 5, 20, Math.PI * 0.6), 0, 0.2, -1.5)]), glow, false);
+  // 목: 세 덩어리가 위로 갈수록 가늘어진다 + 위 가시
+  P.neck = mesh(merge([tr(B(1.0, 1.0, 0.9, 1.15), 0, 0.15, -0.3), tr(B(0.88, 1.0, 0.9, 1.1), 0, 0.5, -1.3), tr(B(0.78, 1.0, 0.9, 1.0), 0, 0.85, -2.2), tr(B(0.5, 1.0, 0.7, 1.4), 0, -0.45, -1.2)]), ink);   // 마지막은 늘어진 목살
+  P.neckSpikes = mesh(tr(spikes(4, 0.55, 0.11, 2.0, 'z'), 0, 1.35, -1.2), bone);
+  // 두개골(headG 좌표 그대로): 뇌실·눈두덩 두 개·길고 납작한 주둥이·코 마루·눈구멍
+  P.skull = mesh(merge([tr(B(1.05, 1.0, 0.85, 1.0), 0, 0.55, -0.2), tr(B(0.5, 1.0, 0.55, 0.9), -0.6, 0.95, -0.85), tr(B(0.5, 1.0, 0.55, 0.9), 0.6, 0.95, -0.85), tr(B(0.95, 0.85, 0.68, 1.9), 0, 0.35, -2.0), tr(B(0.42, 1.0, 0.6, 1.3), 0, 0.78, -3.15), tr(B(0.55, 1.2, 0.5, 0.7), 0, 0.05, -3.5)]), ink);
+  P.skullRidge = mesh(tr(spikes(5, 0.4, 0.08, 1.5, 'z'), 0, 1.3, -0.2), bone);
+  P.sockets = mesh(merge([tr(B(0.3, 1, 1, 0.6), -0.72, 0.85, -1.15), tr(B(0.3, 1, 1, 0.6), 0.72, 0.85, -1.15), tr(B(0.12, 1, 0.6, 1.4), -0.22, 0.72, -3.7), tr(B(0.12, 1, 0.6, 1.4), 0.22, 0.72, -3.7)]), dark);   // 눈구멍 둘 + 콧구멍 둘
+  // 아래턱(jaw 그룹 좌표): 길고 납작한 반타원 + 턱살
+  P.jaw = mesh(merge([tr(B(0.8, 0.85, 0.5, 1.75), 0, -0.1, -1.6), tr(B(0.6, 1.1, 0.55, 0.8), 0, -0.25, 0.1)]), ink);
   P.jawSag = mesh(tr(tatters(5, 0.5, 0.6), 0, -0.4, 0.2), dark, false);
-  // 꼬리 마디(s = 축소 비율): 매끈한 마디 + 위 가시
-  P.tail = (s) => mesh(merge([tr(rx(tapered(0.55 * s, 0.68 * s, 1.95, 10), Math.PI / 2), 0, 0, 0.95), tr(new THREE.ConeGeometry(0.1 * s, 0.5 * s, 5), 0, 0.68 * s + 0.2 * s, 0.9)]), ink);
-  // 다리: 허벅지(큰 근육) · 정강이 · 발(발톱 셋)
-  P.thigh = mesh(merge([blob(1.0, 0.85, 1.15, 1.0, 12), tr(tapered(0.55, 0.75, 1.2, 10), 0, -1.4, 0.1)]), ink);
-  P.shin = mesh(merge([tapered(0.38, 0.5, 2.3, 10), tr(blob(0.55, 1, 0.8, 1), 0, 1.0, 0)]), ink);
-  P.foot = mesh(merge([tr(new THREE.BoxGeometry(1.2, 0.5, 1.6), 0, -0.25, -0.3), tr(blob(0.5, 1, 0.6, 1), 0, -0.1, 0.4)]), ink);
+  // 꼬리 마디(s = 축소 비율): 매끈한 마디 + 관절 구(마디 사이가 꺾여도 이어 보인다) + 위 가시
+  P.tail = (s) => mesh(merge([tr(rx(tapered(0.55 * s, 0.68 * s, 1.95, 14), Math.PI / 2), 0, 0, 0.95), blob(0.66 * s, 1, 1, 1, 14), tr(new THREE.ConeGeometry(0.1 * s, 0.5 * s, 5), 0, 0.68 * s + 0.2 * s, 0.9)]), ink);
+  // 다리: 허벅지 근육 · 정강이 · 발
+  P.thigh = mesh(merge([B(1.05, 0.9, 1.2, 1.05), tr(tapered(0.5, 0.75, 1.3, 14), 0, -1.45, 0.1)]), ink);
+  P.shin = mesh(merge([tapered(0.36, 0.5, 2.3, 14), tr(blob(0.55, 1, 0.85, 1, 14), 0, 1.0, 0)]), ink);
+  P.foot = mesh(merge([tr(B(0.62, 1.0, 0.45, 1.4), 0, -0.2, -0.4), tr(blob(0.5, 1, 0.65, 1, 14), 0, -0.1, 0.4)]), ink);
   P.footClaws = () => mesh(merge([-1, 0, 1].map((k) => tr(rx(talon(0.15, 0.9), -Math.PI / 2 + 0.25), k * 0.42, -0.3, -1.3))), bone);
   // 앞발: 가늘고 굽음 + 발톱 둘
   P.arm = () => mesh(merge([tapered(0.13, 0.18, 1.1, 8), tr(rx(talon(0.07, 0.45), 0.6), -0.1, -0.6, -0.1), tr(rx(talon(0.07, 0.45), 0.6), 0.1, -0.6, -0.1)]), ink);
-  // 쇠판: 못 박힌 판 + 가죽끈
-  P.plate = (w, h, d, mat) => { const m = mesh(rivetedPlate(w, h, d), mat); return m; };
+  P.plate = (w, h, d, mat) => mesh(rivetedPlate(w, h, d), mat);
   return P;
 }
 
