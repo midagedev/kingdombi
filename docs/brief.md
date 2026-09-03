@@ -108,6 +108,9 @@
 
 ## 스택
 
+Web Analytics: Cloudflare Web Analytics 비콘(`index.html`, 사이트 `midagedev.github.io`, site_tag 7e588452…). 대시보드 → Analytics & Logs → Web Analytics. 순위표 Worker 와 같은 계정(midagedev@gmail.com).
+
+
 three.js 0.185.1(cheoma 고정) · Vite · Rapier(WASM, 마차는 kinematic 몸체) · WebAudio 합성 효과음. 모델은 전부 절차생성(cheoma + 자체).
 BGM 은 kingbi 에서 이전한 자작 Suno 트랙 4곡(`public/bgm/`): wave · bloodnight · lull · death-sting.
 
