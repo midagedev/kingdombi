@@ -342,9 +342,10 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const k = () => 2.6 / Math.max(320, innerWidth);
     const knob = stickEl?.firstElementChild;
     const cap = (e) => { try { el.setPointerCapture(e.pointerId); } catch {} };   // 합성 이벤트(테스트)엔 활성 포인터가 없다
-    const showStick = (x, y) => { if (!stickEl) return; stickEl.classList.add('on'); stickEl.classList.remove('hint'); stickEl.style.left = `${x}px`; stickEl.style.top = `${y}px`; stickEl.style.bottom = 'auto'; };
+    const showStick = (x, y) => { if (!stickEl) return; stickEl.classList.add('on'); stickEl.classList.remove('hint'); stickEl.style.left = `${x}px`; stickEl.style.top = `${y}px`; stickEl.style.bottom = 'auto'; stickEl.style.right = 'auto'; };
     const moveKnob = (dx, dy) => { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; };
     const hideStick = () => { if (!stickEl) return; stickEl.classList.remove('on'); stickEl.classList.add('hint'); stickEl.style.cssText = ''; moveKnob(0, 0); };
+    // showStick 은 left/top 인라인 — 힌트의 right/bottom 을 이기려면 right/bottom 도 auto
     if (stickEl && (forceStick || navigator.maxTouchPoints > 0)) stickEl.classList.add('hint');
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointerdown', (e) => {

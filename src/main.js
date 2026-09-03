@@ -120,22 +120,24 @@ style.textContent = `
   #wave { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; text-align:left; }
   #wave #waveN { display:block; font: 300 22px/1 var(--mono); font-variant-numeric: tabular-nums; opacity:.85; }
   #wave.stop #waveN { color: var(--red); }
-  #gauges { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 18px); transform:translateX(-50%); width: 42%; text-align:center; }
+  #gauges { position:absolute; left:50%; bottom: max(env(safe-area-inset-bottom), 18px); transform:translateX(-50%); width: 38%; text-align:center; }
   #gauges .lbl { margin-top:8px; letter-spacing:.4em; } #gauges .lbl span { font: 300 13px/1 var(--mono); letter-spacing:0; opacity:1; color: var(--ink); }
   #hp { height:2px; background: rgba(233,230,223,.16); position:relative; }
   #hp i { position:absolute; left:0; top:-0.5px; height:3px; background: var(--ink); width:100%; transition: width .12s linear, background .25s; }
   #hp.low i { background: var(--red); } #hp.hit i { background: var(--red); } #hp.heal i { background:#ffb347; }
-  #bomb { position:absolute; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 26px); width: 62px; height: 62px; border: 1px solid rgba(233,230,223,.35); border-radius: 50%; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; opacity:0; transition: opacity .5s, transform .1s; }
+  #bomb { position:absolute; right: 22px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 150px); width: 62px; height: 62px; border: 1px solid rgba(233,230,223,.35); border-radius: 50%; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; opacity:0; transition: opacity .5s, transform .1s; }
   #bomb.on { opacity:.9; } #bomb.empty { opacity:.3; } #bomb:active { transform: scale(.92); }
   #bomb b { font: 300 24px/1 var(--serif); color: var(--ink); }
   #bomb span { display:flex; gap:4px; margin-top:5px; } #bomb span i { width:5px; height:5px; border-radius:50%; background:#ffb347; display:block; }
-  #stick { position:absolute; left:76px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 18px); width:108px; height:108px; margin:-54px 0 0 -54px; border:1px solid rgba(233,230,223,.45); border-radius:50%; opacity:0; pointer-events:none; }
+  #stick { position:absolute; right:22px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 18px); width:108px; height:108px; margin:-54px 0 0 -54px; border:1px solid rgba(233,230,223,.45); border-radius:50%; opacity:0; pointer-events:none; }
   #stick.hint { opacity:.22; transition: opacity .4s; } #stick.on { opacity:.8; }
   #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
   #lang { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; font: 300 11px/1 var(--mono); letter-spacing:.2em; pointer-events:auto; display:flex; gap:14px; opacity:.55; }
   #lang span { cursor:pointer; padding: 6px 0; } #lang span.on { color:#e6c87a; border-bottom:1px solid #e6c87a; } #lang #calm { margin-left: 10px; }
   #c { cursor: crosshair; }
   #hud { text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 6px rgba(0,0,0,.5); }
+  /* iOS 사파리: 더블탭 확대·핀치 차단(touch-action 은 상속되지 않아 요소마다) */
+  canvas, #hud, #hud * { touch-action: none; }
   #title .t3 { max-width: 88vw; text-wrap: balance; }
   /* 폰(세로·좁은 화면): 라벨 크게, 바 두껍게, 雷 버튼 엄지 크기 */
   @media (max-width: 600px) {
@@ -145,7 +147,7 @@ style.textContent = `
     #hp { height: 4px; } #hp i { height: 5px; top: -0.5px; }
     #boss div { height: 3px !important; } #boss i { height: 4px !important; } #boss span { font-size: 12px !important; opacity: .9 !important; }
     #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
-    #bomb { width: 76px; height: 76px; right: 16px; } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
+    #bomb { width: 76px; height: 76px; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 160px); } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
     #title .t1 { font-size: 64px; } #title .t3 { font-size: 14px; line-height: 1.8; }
     #lang { font-size: 12px; }
   }
@@ -292,6 +294,10 @@ const bombNow = () => { if (game.started && !game.over && game.cont <= 0) gun.th
 $('bomb').addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); bombNow(); });
 gun.hooks.onBombKey = bombNow;
 addEventListener('keydown', (e) => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); bombNow(); } });
+// iOS 사파리 확대 차단: 더블탭·핀치(gesturestart) — 게임 중 화면이 커지면 조작이 끝난다
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 function resize() {
   const w = innerWidth, h = innerHeight;
