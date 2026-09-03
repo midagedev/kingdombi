@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, ROUTE, districtAt } from './world.js';
+import { buildWorld, ROUTE, districtAt, rng } from './world.js';
 import { createLook, LAYER_SPOT } from './look.js';
 import { createPhysics } from './physics.js';
 import { createHorde } from './horde.js';
@@ -14,6 +14,11 @@ import { createFires } from './fire.js';
 import { createJuice } from './juice.js';
 
 const q = new URLSearchParams(location.search);
+// 데일리 시드: 로컬 날짜(YYYY-MM-DD)를 해시해 길·소품·수리 상자 배치를 정한다. 순위표도 같은 날짜 키를 쓴다.
+const DAY = q.get('day') || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+const DAY_SEED = [...DAY].reduce((h, ch) => (Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0), 2166136261);
+const dayRand = rng(DAY_SEED ^ 0x9e3779b9);
+const BOARD_URL = 'https://kingdombi-scores.midagedev.workers.dev';
 const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -97,7 +102,7 @@ hud.innerHTML = `
   <div id="wave"><span id="waveN"></span><span class="lbl" id="waveL"></span></div>
   <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div class="lbl"><span id="hpN">100</span> 장갑</div></div>
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
-  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">궁궐까지 ${ROUTE.start - ROUTE.end} m · 恐龍이 기다린다<br>누르면 방아쇠, 드래그로 조준, 雷 는 비격진천뢰<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라</div></div>
+  <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">오늘의 길 ${DAY} · 궁궐까지 ${ROUTE.start - ROUTE.end} m · 恐龍이 기다린다<br>누르면 방아쇠, 드래그로 조준, 雷 는 비격진천뢰<br>장갑이 전부다 — 수리 상자를 쏘거나 들이받아라</div></div>
   <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">누르면 코인 한 개</div></div>
   <div id="end"></div>`;
 const style = document.createElement('style');
@@ -136,7 +141,7 @@ const $ = (id) => document.getElementById(id);
 
 // ── 부팅 ──
 const t0 = performance.now();
-const world = buildWorld(scene);
+const world = buildWorld(scene, DAY_SEED);
 console.log('[kb] world built ms', (performance.now() - t0).toFixed(0), 'buildings', world.buildings.length);
 
 const physics = await createPhysics(scene);
@@ -238,7 +243,7 @@ const bosses = createBosses(scene, physics, {
 const pickups = createPickups(scene, { vehicle, fx, audio, juice, onHeal: repairArmor, onScore: (n, g) => addScore(n, g, true) });
 gun.targets.push(pickups);
 // 차선 위 수리 상자: 70m 마다 하나(정차 지점 근처 제외). 정차·보스전엔 앞쪽에 하나 더 떨어진다(쏘면 열린다).
-for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + Math.random() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((Math.random() - 0.5) * 5, z, 'lane');
+for (let z = ROUTE.start - 70; z > ROUTE.end; z -= 62 + dayRand() * 20) if (!ROUTE.stops.some((s) => Math.abs(s.z - z) < 14)) pickups.spawn((dayRand() - 0.5) * 5, z, 'lane');
 gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, time);
 // 비격진천뢰 폭발: 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판 파괴·피해
 gun.hooks.onBlast = (x, z, R, time) => {
@@ -489,6 +494,6 @@ function endGame(win) {
   if (game.over) return;
   game.over = true;
   contEl.style.opacity = 0; contEl.style.pointerEvents = 'none';
-  const st = { win, score: game.score, credits: game.credits, kills: horde.stats.kills, time: game.time, accuracy: gun.state.shots ? gun.state.hits / gun.state.shots : 0, razed: game.razed, reachedM: Math.max(0, Math.round(vpos.z - ROUTE.end)) };
-  captureRequest = (blob) => juice.endCard($('end'), st, blob, () => location.reload());
+  const st = { win, score: game.score, credits: game.credits, kills: horde.stats.kills, time: game.time, accuracy: gun.state.shots ? gun.state.hits / gun.state.shots : 0, razed: game.razed, reachedM: Math.max(0, Math.round(vpos.z - ROUTE.end)), day: DAY };
+  captureRequest = (blob) => juice.endCard($('end'), st, blob, () => location.reload(), { url: BOARD_URL, day: DAY, demo: game.demo });
 }

@@ -27,7 +27,7 @@ export const ROUTE = {
 };
 
 // 결정적 난수(같은 길이 매번 나온다 — 데모·디버그·클립 재현)
-function rng(seed) { let s = seed >>> 0; return () => { s += 0x6D2B79F5; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+export function rng(seed) { let s = seed >>> 0; return () => { s += 0x6D2B79F5; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
 // 시각적으로 동일한 재질을 건물 전체에서 하나로 통일 → 병합 후 드로우콜이 재질 종류 수까지 떨어진다.
 const MAT_CANON = new Map();
@@ -127,9 +127,10 @@ function blocked(x, z) {
   return false;
 }
 
-export function buildWorld(scene) {
+// seed: 날짜 해시(데일리 시드) — 같은 날엔 모두가 같은 길을 달린다
+export function buildWorld(scene, seed = 20260903) {
   const buildings = [];
-  const rand = rng(20260903);
+  const rand = rng(seed);
   let seedN = 1000;
   const place = (kind, root, x, y, z, yaw) => { root.position.set(x, y, z); root.rotation.y = yaw; const b = buildingRecord(kind, root, scene); buildings.push(b); return b; };
   const house = (style, x, z, yaw) => place(style, buildBuilding({ ...PRESETS[style], seed: seedN++ }), x, 0, z, yaw);

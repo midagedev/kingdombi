@@ -28,6 +28,8 @@ const CSS = `
   #end .stats div.red b { color: var(--red); }
   #end .hs { margin: 0 auto 22px; font: 300 11px/1.9 var(--mono); letter-spacing:.12em; opacity:.8; text-align:left; display:inline-block; white-space:pre; }
   #end .hs div.me { color:#e6c87a; }
+  #end .hs .hd { opacity:.5; letter-spacing:.4em; font-family: var(--serif); margin-bottom:2px; }
+  #end .hs .rk { color:#e6c87a; margin-top:6px; }
   #end .hs input { width: 3.2em; background:transparent; border:0; border-bottom:1px solid var(--red); color:#e6c87a; font: inherit; text-transform: uppercase; text-align:center; outline:0; pointer-events:auto; }
   #end .btns { display:flex; gap:26px; justify-content:center; pointer-events:auto; }
   #end button { font: 300 12px/1 var(--serif); letter-spacing:.3em; padding: 10px 2px; background:transparent; color: var(--ink); border:0; border-bottom: 1px solid rgba(233,230,223,.35); cursor:pointer; }
@@ -141,16 +143,17 @@ export function createJuice(hud) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'kingdombi.png'; a.click(); return '저장했다';
   }
 
-  function endCard(endEl, st, frameBlob, onRestart) {
+  function endCard(endEl, st, frameBlob, onRestart, online = null) {
     st.maxCombo = maxCombo; st.rank = rankOf(st.score);
     best.runs++; localStorage.setItem('kb.runs', best.runs);
     // 명예의 전당: 5위 안이면 이름 석 자
-    const entry = { name: '???', score: st.score, kills: st.kills, win: st.win };
+    const lastName = localStorage.getItem('kb.name') || '';
+    const entry = { name: lastName || '???', score: st.score, kills: st.kills, win: st.win };
     const placed = hs.filter((e) => e.score > st.score).length;
     st.isRecord = placed === 0 && st.score > 0;
     const qualifies = placed < 5 && st.score > 0;
     const table = [...hs]; if (qualifies) table.splice(placed, 0, entry); table.length = Math.min(5, table.length);
-    const rows = table.map((e, i) => `<div class="${e === entry ? 'me' : ''}">${i + 1}. ${e === entry ? '<input id="hsName" maxlength="3" placeholder="AAA" autocomplete="off">' : e.name.padEnd(3, ' ')}  ${String(e.score).padStart(7, '0')}  ${e.win ? '새벽' : '　　'}</div>`).join('');
+    const rows = table.map((e, i) => `<div class="${e === entry ? 'me' : ''}">${i + 1}. ${e === entry ? '<input id="hsName" maxlength="3" placeholder="AAA" autocomplete="off" value="${lastName}">' : e.name.padEnd(3, ' ')}  ${String(e.score).padStart(7, '0')}  ${e.win ? '새벽' : '　　'}</div>`).join('');
     endEl.innerHTML = `<div class="card">
       <h2>${st.win ? '새벽이 왔다' : '밤을 넘기지 못했다'}</h2>
       <div class="score">${String(st.score).padStart(7, '0')}<b>${st.rank}</b></div>
@@ -159,7 +162,7 @@ export function createJuice(hud) {
         <div class="red">처치<b>${st.kills}</b></div><div>최고 연쇄<b>${st.maxCombo}</b></div>
         <div>명중률<b>${Math.round(st.accuracy * 100)}%</b></div><div>${st.win ? '시간' : '궁궐까지'}<b>${st.win ? fmt(st.time) : `${st.reachedM}m`}</b></div>
       </div>
-      <div class="hs">${rows}</div>
+      <div class="hs" id="hsBox">${rows}</div>
       <div class="btns"><button id="btnShare">전적 공유</button><button id="btnPng">장면 저장</button><button id="btnRetry">다시</button></div>
       <div class="hint">${qualifies ? '이름을 눌러 석 자를 남기고 ' : ''}화면을 누르면 다시 밤으로</div>
       <div class="credits">${st.win ? '<div class="roll">킹덤비 · 조선 느와르 좀비 개틀링<br>기획·개발 midagedev · 건축 생성 cheoma · 음악 자작(Suno)<br>three.js · Rapier · 모델은 전부 절차생성</div>' : ''}<a href="https://x.com/midagedev" target="_blank" rel="noopener">@midagedev</a> · <a href="https://github.com/midagedev/kingdombi" target="_blank" rel="noopener">github.com/midagedev/kingdombi</a></div></div>`;
@@ -167,12 +170,47 @@ export function createJuice(hud) {
     const stop = (e) => e.stopPropagation();
     for (const id of ['btnShare', 'btnPng', 'btnRetry']) endEl.querySelector('#' + id).addEventListener('pointerdown', stop);
     for (const a of endEl.querySelectorAll('.credits a')) a.addEventListener('pointerdown', stop);
-    const saveHs = () => { if (!qualifies) return; const inp = endEl.querySelector('#hsName'); entry.name = (inp?.value || 'AAA').toUpperCase().padEnd(3, 'A').slice(0, 3); localStorage.setItem('kb.hs', JSON.stringify(table)); };
-    const inp = endEl.querySelector('#hsName');
-    if (inp) { inp.addEventListener('pointerdown', stop); inp.addEventListener('change', saveHs); inp.addEventListener('input', saveHs); setTimeout(() => inp.focus(), 400); }
-    const restart = () => { saveHs(); onRestart(); };
-    endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = await share(st); });
-    endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : '프레임 없음'; });
+    const nameNow = () => { const inp = endEl.querySelector('#hsName'); const v = (inp?.value || lastName || 'AAA').toUpperCase().replace(/[^0-9A-Z가-힣]/g, ''); return (v || 'AAA').padEnd(3, 'A').slice(0, 3); };
+    const saveHs = () => { const nm = nameNow(); localStorage.setItem('kb.name', nm); if (!qualifies) return; entry.name = nm; localStorage.setItem('kb.hs', JSON.stringify(table)); };
+    // ── 온라인 순위표(Cloudflare Worker): 카드가 열리면 오늘 TOP5 + 역대 1위를 보여주고, 이름이 정해지면 한 번 올린다 ──
+    const hsBox = endEl.querySelector('#hsBox');
+    let submitted = false, board = null;
+    const fmtRow = (e, mine) => `<div class="${mine ? 'me' : ''}">${String(e.rank).padStart(2, ' ')}. ${e.n.padEnd(3, ' ')}  ${String(e.s).padStart(7, '0')}  ${e.w ? '새벽' : '　　'}</div>`;
+    const renderBoard = (mine) => {
+      if (!board) return;
+      const top = board.today.slice(0, 5).map((e) => fmtRow(e, mine && e.s === st.score && e.n === nameNow())).join('');
+      const all = board.all[0] ? `<div class="hd">역대 1위 ${board.all[0].n} ${String(board.all[0].s).padStart(7, '0')}</div>` : '';
+      const me = mine ? `<div class="rk">오늘 ${mine.rankDay}위 · 역대 ${mine.rankAll}위${st.credits > 1 ? ` · 코인 ${st.credits}` : ''}</div>` : (qualifies || !online?.demo ? `<div class="me">당신  <input id="hsName" maxlength="3" placeholder="AAA" autocomplete="off" value="${lastName}">  ${String(st.score).padStart(7, '0')}</div>` : '');
+      hsBox.innerHTML = `<div class="hd">오늘의 순위 ${board.day}</div>${top || '<div>아직 아무도 없다</div>'}${me}${all}`;
+      wireInput();
+    };
+    const submit = async (keepalive = false) => {
+      if (!online || submitted || online.demo || st.score <= 0) return;
+      submitted = true;
+      try {
+        const r = await fetch(`${online.url}/score`, { method: 'POST', keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nameNow(), score: st.score, kills: st.kills, win: st.win, credits: st.credits, day: online.day }) });
+        if (r.ok) {
+          const d = await r.json(); board = { day: d.day, today: d.today, all: d.all };
+          // KV list 는 60초쯤 뒤에 반영되니 내 줄은 직접 끼워 넣는다
+          const mine = { n: nameNow(), s: st.score, w: st.win };
+          if (!board.today.some((e) => e.s === mine.s && e.n === mine.n)) { board.today.splice(d.rankDay - 1, 0, mine); board.today.forEach((e, i) => { e.rank = i + 1; }); }
+          if (!board.all.some((e) => e.s === mine.s && e.n === mine.n)) { board.all.splice(d.rankAll - 1, 0, mine); board.all.forEach((e, i) => { e.rank = i + 1; }); }
+          renderBoard({ rankDay: d.rankDay, rankAll: d.rankAll });
+        }
+      } catch {}
+    };
+    function wireInput() {
+      const inp = endEl.querySelector('#hsName'); if (!inp) return;
+      inp.addEventListener('pointerdown', stop);
+      inp.addEventListener('input', () => { saveHs(); if (inp.value.length >= 3) setTimeout(() => submit(), 500); });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { saveHs(); submit(); inp.blur(); } });
+      inp.addEventListener('blur', () => { saveHs(); if (inp.value.length >= 1) submit(); });
+    }
+    if (online) fetch(`${online.url}/top?day=${online.day}`).then((r) => r.json()).then((d) => { board = d; renderBoard(null); if (lastName) submit(); }).catch(() => {});
+    wireInput();
+    const restart = () => { saveHs(); submit(true); onRestart(); };
+    endEl.querySelector('#btnShare').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); submit(); e.target.textContent = await share(st); });
+    endEl.querySelector('#btnPng').addEventListener('click', async (e) => { e.stopPropagation(); saveHs(); submit(); e.target.textContent = frameBlob ? await savePng(st, frameBlob) : '프레임 없음'; });
     endEl.querySelector('#btnRetry').addEventListener('click', restart);
     endEl.addEventListener('pointerdown', (e) => { if (!['BUTTON', 'INPUT', 'A'].includes(e.target.tagName)) restart(); });
   }

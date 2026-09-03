@@ -1,0 +1,7 @@
+name = "kingdombi-scores"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[kv_namespaces]]
+binding = "KB_SCORES"
+id = "2891d74023a24801864f12ff7364f88e"
