@@ -13,6 +13,8 @@ import { createNightlife } from './nightlife.js';
 import { createSky } from './sky.js';
 import { createGround } from './ground.js';
 import { createExplosions } from './explosion.js';
+import { createRain } from './rain.js';
+import { createRoadside } from './roadside.js';
 import { createFires } from './fire.js';
 import { createJuice, rankOf } from './juice.js';
 import { createCine } from './cine.js';
@@ -39,8 +41,8 @@ renderer.toneMapping = THREE.NoToneMapping;
 renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
-const NIGHT = new THREE.Color(0x05060a);
-const HORIZON = new THREE.Color(0x1b1e2a);
+const NIGHT = new THREE.Color(0x07090f);     // 순흑(#05060a)은 '안 그린 화면'으로 읽혔다 — 아주 어두운 청회색이 밤이다
+const HORIZON = new THREE.Color(0x1d2130);
 scene.background = NIGHT;
 scene.fog = new THREE.FogExp2(HORIZON, 0.0068);
 const camera = new THREE.PerspectiveCamera(58, 1, 0.3, 700);
@@ -74,6 +76,7 @@ const path = createRoutePath();
 const sV = () => vehicle.state.s;   // 마차의 s (vehicle 은 아래서 만든다 — 호출 시점엔 있다)
 // 지면(src/ground.js): 젖은 흙땅(마차를 따라감, 무늬는 월드 고정) + 구간마다 바큇자국 난 길 띠
 const ground = createGround(scene, path, { roadHalf: ROAD_HALF, end: ROUTE.end, stub: ROUTE.stub });
+const rain = createRain(scene, { drops: isMobile ? 700 : 1500, splashes: isMobile ? 90 : 200 });   // 세계 공간 빗줄기·물튀김(src/rain.js)
 
 // ── 거리 등롱 둘: 실광원 예산 2. 마차가 지나치면 110m 앞으로 건너뛴다(개구리 뛰기) ──
 const lanterns = [];
@@ -171,6 +174,7 @@ $('lang').addEventListener('pointerdown', (e) => { e.stopPropagation(); const l 
 // ── 부팅 ──
 const t0 = performance.now();
 const world = buildWorld(scene, DAY_SEED, path);
+const roadside = createRoadside(scene, path, world, { end: ROUTE.end, stub: ROUTE.stub, roadHalf: ROAD_HALF, isMobile });   // 길가 풀·돌(src/roadside.js)
 console.log('[kb] world built ms', (performance.now() - t0).toFixed(0), 'buildings', world.buildings.length);
 
 const physics = await createPhysics(scene);
@@ -587,6 +591,7 @@ renderer.setAnimationLoop((now) => {
     vehicle.update(0);   // dt 0 — 카드 선택 중 drive 의 목표 속도(5 m/s)가 남아 있어 마차가 1.2초에 6 m 굴러갔다(실측 -150.1→-157.6)
   }
   updateCamera(dt, rawDt);
+  rain.update(rawDt, camera.position); roadside.update(performance.now() / 1000);   // 타이틀·정지 중에도 비·바람은 움직인다
   cine.update(rawDt);
 
   // 천둥·번개: 한 번씩 세계를 하얗게 찢는다

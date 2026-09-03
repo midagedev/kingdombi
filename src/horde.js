@@ -22,21 +22,43 @@ const BONES = [
 ];
 
 function tag(g, id) { if (g.index) g = g.toNonIndexed(); const n = g.attributes.position.count; g.setAttribute("aBone", new THREE.Float32BufferAttribute(new Float32Array(n).fill(id), 1)); return g; }
+// 좀비 본체 재조형(2026-09-03 AAA 룩): 상자 11개 → 마디 원기둥·관절 구·굽은 몸통·두개골+턱·찢어진 옷·머리카락. 뼈 중심·관절 축(animate/deadPose/bonePivot 의 0.46·0.9·1.05·1.22·1.54·1.58)은 그대로.
+// 광선 판정 캡슐(r 0.58 · h 1.95)도 그대로. 한 마리 ≈ 900 tri.
+const mv = (g, x, y, z) => { g.translate(x, y, z); return g; };
+const sph = (r, sx = 1, sy = 1, sz = 1, w = 7, h = 5) => { const g = new THREE.SphereGeometry(r, w, h); g.scale(sx, sy, sz); return g; };
+const seg = (rTop, rBot, h) => new THREE.CylinderGeometry(rTop, rBot, h, 8, 1);
 function buildZombieGeometry() {
   const parts = [];
-  for (const b of BONES) {
-    const g = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2], 1, 2, 1);
-    g.translate(b.at[0], b.at[1], b.at[2]);
-    parts.push(tag(g, b.id));
+  const add = (g, id) => parts.push(tag(g, id));
+  // 골반 0: 눌린 구 + 늘어진 옷 조각 5장(양면 재질)
+  add(mv(sph(0.17, 1.0, 0.62, 0.7), 0, 0.98, 0), 0);
+  for (let k = 0; k < 5; k++) { const a = k * 1.257 + 0.3, l = 0.28 + (k % 2) * 0.14; const pl = new THREE.PlaneGeometry(0.11, l, 1, 2); pl.translate(0, -l / 2, 0); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.17, 0.95, Math.sin(a) * 0.15); add(pl, 0); }
+  // 몸통 1: 앞으로 굽은 가슴(구) + 어깨 근육 둘 + 등 굽이
+  add(mv(sph(0.2, 1.0, 1.3, 0.62, 8, 6), 0, 1.31, 0), 1);
+  add(mv(sph(0.075, 1, 0.8, 1), -0.2, 1.5, 0), 1); add(mv(sph(0.075, 1, 0.8, 1), 0.2, 1.5, 0), 1);
+  add(mv(sph(0.12, 1.0, 1.2, 0.7, 6, 4), 0, 1.4, -0.09), 1);   // 등 굽이(곱사등)
+  // 머리 2: 두개골 + 아래턱 + 뒷머리 머리카락 조각 3
+  add(mv(sph(0.115, 0.92, 1.05, 1.0, 8, 6), 0, 1.75, 0.02), 2);
+  add(mv(new THREE.BoxGeometry(0.13, 0.055, 0.12), 0, 1.635, 0.06), 2);
+  for (let k = 0; k < 3; k++) { const a = Math.PI + (k - 1) * 0.7, l = 0.22 + k * 0.05; const pl = new THREE.PlaneGeometry(0.07, l, 1, 2); pl.translate(0, -l / 2, 0); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.09, 1.8, Math.sin(a) * 0.09 + 0.02); add(pl, 2); }
+  // 팔: 위팔(어깨 구 1.54 관절) · 아래팔(팔꿈치 구 1.22 관절 + 손)
+  for (const sx of [-1, 1]) {
+    add(mv(sph(0.06, 1, 1, 1, 6, 4), sx * 0.27, 1.54, 0), sx < 0 ? 3 : 4); add(mv(seg(0.052, 0.045, 0.3), sx * 0.27, 1.38, 0), sx < 0 ? 3 : 4);
+    add(mv(sph(0.05, 1, 1, 1, 6, 4), sx * 0.27, 1.22, 0), sx < 0 ? 5 : 6); add(mv(seg(0.044, 0.038, 0.32), sx * 0.27, 1.05, 0), sx < 0 ? 5 : 6);
+    add(mv(new THREE.BoxGeometry(0.07, 0.08, 0.05), sx * 0.27, 0.86, 0.01), sx < 0 ? 5 : 6);
+    // 다리: 허벅지(엉덩이 구 0.9) · 종아리(무릎 구 0.46 + 발)
+    add(mv(sph(0.075, 1, 1, 1, 6, 4), sx * 0.11, 0.9, 0), sx < 0 ? 7 : 8); add(mv(seg(0.07, 0.058, 0.44), sx * 0.11, 0.67, 0), sx < 0 ? 7 : 8);
+    add(mv(sph(0.06, 1, 1, 1, 6, 4), sx * 0.11, 0.46, 0), sx < 0 ? 9 : 10); add(mv(seg(0.055, 0.048, 0.42), sx * 0.11, 0.24, 0), sx < 0 ? 9 : 10);
+    add(mv(new THREE.BoxGeometry(0.1, 0.06, 0.2), sx * 0.11, 0.03, 0.04), sx < 0 ? 9 : 10);
   }
   // 케데헌 데몬 문법: 뿔 한 쌍(머리), 가슴 코어(발광 팔면체), 발톱(전완 끝 웨지)
   for (const sx of [-1, 1]) {
     const horn = new THREE.ConeGeometry(0.035, 0.22, 5); horn.translate(0, 0.11, 0); horn.rotateZ(-sx * 0.55); horn.translate(sx * 0.09, 1.86, 0.0);
-    parts.push(tag(horn, 2));
+    add(horn, 2);
     const claw = new THREE.ConeGeometry(0.045, 0.16, 4); claw.rotateX(Math.PI); claw.translate(sx * 0.27, 0.86, 0.02);
-    parts.push(tag(claw, sx < 0 ? 5 : 6));
+    add(claw, sx < 0 ? 5 : 6);
   }
-  const core = new THREE.OctahedronGeometry(0.085, 0); core.translate(0, 1.34, 0.13); parts.push(tag(core, 1));
+  const core = new THREE.OctahedronGeometry(0.085, 0); core.translate(0, 1.34, 0.13); add(core, 1);
   // 수동 병합 (BufferGeometryUtils 없이: 속성 셋이 동일)
   const total = parts.reduce((a, g) => a + g.attributes.position.count, 0);
   const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), bone = new Float32Array(total);
@@ -224,9 +246,9 @@ export function createHorde(scene, physics, {
   geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone);
 
   const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
-  const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms });
+  const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms, side: THREE.DoubleSide });   // 옷·머리카락 판(양면)
   const glowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
-  const depthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms });
+  const depthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms, side: THREE.DoubleSide });
 
   const body = new THREE.InstancedMesh(geo, bodyMat, N);
   body.castShadow = true; body.customDepthMaterial = depthMat; body.frustumCulled = false;
@@ -247,9 +269,9 @@ export function createHorde(scene, physics, {
   corpseGeo.setAttribute('iType', cType);
   const cGone = new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL), 1); cGone.setUsage(THREE.DynamicDrawUsage);
   corpseGeo.setAttribute('iGone', cGone); corpseGeo.setAttribute('iHitInfo', new THREE.InstancedBufferAttribute(new Float32Array(CORPSE_POOL * 2), 2));
-  const corpseBodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms: deadUniforms });
+  const corpseBodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms: deadUniforms, side: THREE.DoubleSide });
   const corpseGlowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms: deadUniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
-  const corpseDepthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms: deadUniforms });
+  const corpseDepthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms: deadUniforms, side: THREE.DoubleSide });
   const corpseBody = new THREE.InstancedMesh(corpseGeo, corpseBodyMat, CORPSE_POOL);
   corpseBody.castShadow = true; corpseBody.customDepthMaterial = corpseDepthMat; corpseBody.frustumCulled = false;
   corpseBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

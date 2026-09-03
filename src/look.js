@@ -26,7 +26,7 @@ const BLUR = /* glsl */`
 const COMPOSITE = /* glsl */`
   precision highp float;
   uniform sampler2D tWorld, tSpot, tGlow, tDepth;
-  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt, edgeK;
+  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt, edgeK, inkE;
   varying vec2 vUv;
 
   float linDepth(vec2 uv) {
@@ -39,8 +39,10 @@ const COMPOSITE = /* glsl */`
     vec3 col = texture2D(tWorld, vUv).rgb;
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
 
-    // 잉크 톤 커브: 어둠은 순흑으로 눌리고 하이라이트는 종이처럼 뜬다.
-    float ink = smoothstep(0.0, 0.85, pow(lum, 0.72));
+    // 잉크 톤 커브(2026-09-03 재조정): 옛 smoothstep 은 젖은 길·달빛 벽을 종이 흰색으로 날렸다 — 중간 회색이 없어 형태가 살 곳이 없었다.
+    // 필름 숄더: 1 − e^(−lum·E). E=1.7 이면 lum 0.6 → 0.64, 1.0 → 0.82(하이라이트가 눌리고 어둠은 그대로). ?ink=E
+    float ink = (1.0 - exp(-lum * inkE)) / (1.0 - exp(-inkE));
+    ink = ink * ink * (3.0 - 2.0 * ink);                     // 발(toe): 어둠은 먹으로 눌린다 — 숄더만 있으면 화면이 회색 안개가 됐다(실측)
     ink = pow(ink, 1.05 + darkness);
 
     // 깊이 기반 윤곽선 (펜 선). 멀수록 얇아진다.
@@ -121,7 +123,7 @@ export function createLook(renderer, scene, camera) {
     uniforms: {
       tWorld: { value: rtWorld.texture }, tSpot: { value: rtSpot.texture }, tGlow: { value: rtGlowB.texture }, tDepth: { value: depth },
       texel: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, time: { value: 0 }, flash: { value: 0 },
-      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) },   // ?edge=0..1 윤곽선 세기
+      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) }, inkE: { value: +(new URLSearchParams(location.search).get('ink') ?? 1.7) },   // ?edge=0..1 윤곽선 세기
     },
   });
   // AA(2026-09-03): 세계·스팟 두 패스가 depth 를 공유하는 구조라 MSAA 를 못 쓴다(멀티샘플 RT 는 저마다 depth 버퍼를 갖는다) → 합성 결과에 FXAA 한 번. ?aa=0 으로 끈다
@@ -134,7 +136,7 @@ export function createLook(renderer, scene, camera) {
   quadScene.add(quad);
 
   const spotClear = new THREE.Color(0x000000);
-  const state = { flash: 0, rain: 1, darkness: 0, blood: 0, invert: 0, hurt: 0, tint: +(new URLSearchParams(location.search).get('tint') ?? 0.3) };   // ?tint=0..1
+  const state = { flash: 0, rain: 0.5, darkness: 0, blood: 0, invert: 0, hurt: 0, tint: +(new URLSearchParams(location.search).get('tint') ?? 0.4) };   // ?tint=0..1 (2026-09-03: 0.3→0.4)
 
   function blit(mat, target) {
     quad.material = mat;

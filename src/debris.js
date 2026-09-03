@@ -54,10 +54,28 @@ export function createDebris(scene, { count = 700, layer = 0, color = 0x9a9a9a, 
 }
 
 // 바닥 데칼(피 웅덩이). 얇은 원판, 스팟 레이어. 생기고 0.4초 동안 퍼진다.
-export function createDecals(scene, { count = 500, color = 0xc1121f } = {}) {
-  const geo = new THREE.CircleGeometry(0.5, 10);
+// 튄 자국 텍스처(2026-09-03): 완전한 붉은 원은 화면에서 가장 인공적인 형태였다. fbm 로 갉아먹은 덩어리 + 방사형 줄기 + 작은 점.
+function splatterTexture(S = 256) {
+  const c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'), img = g.createImageData(S, S), d = img.data;
+  const h = (x, y) => { const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return v - Math.floor(v); };
+  const n = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy); const a = h(ix, iy), b = h(ix + 1, iy), c2 = h(ix, iy + 1), d2 = h(ix + 1, iy + 1); return a + (b - a) * sx + (c2 - a) * sy + (a - b - c2 + d2) * sx * sy; };
+  const drips = Array.from({ length: 7 }, (_, i) => ({ a: i * 0.9 + h(i, 3) * 0.6, l: 0.55 + h(i, 5) * 0.4, w: 0.05 + h(i, 7) * 0.05 }));
+  const dots = Array.from({ length: 14 }, (_, i) => ({ x: (h(i, 11) - 0.5) * 1.8, y: (h(i, 13) - 0.5) * 1.8, r: 0.03 + h(i, 17) * 0.05 }));
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const u = x / S * 2 - 1, v = y / S * 2 - 1, r = Math.hypot(u, v), ang = Math.atan2(v, u);
+    let a = Math.max(0, 1 - r / (0.55 + (n(u * 3 + 5, v * 3 + 5) - 0.5) * 0.5));   // 갉아먹힌 덩어리
+    for (const dr of drips) { const da = Math.atan2(Math.sin(ang - dr.a), Math.cos(ang - dr.a)); a = Math.max(a, (1 - Math.abs(da) / dr.w) * (r < dr.l ? 1 - r / dr.l * 0.5 : 0) * (r > 0.3 ? 1 : 0)); }
+    for (const dt of dots) a = Math.max(a, 1 - Math.hypot(u - dt.x, v - dt.y) / dt.r);
+    a = Math.min(1, Math.max(0, a)) * (0.7 + 0.3 * n(u * 9, v * 9));
+    const core = 1 - Math.min(1, r / 0.5);   // 중심은 진하고 어둡다(고인 피), 가장자리는 밝은 붉음
+    const o = (y * S + x) * 4; d[o] = 255 * (0.62 - core * 0.25); d[o + 1] = 255 * (0.05 + core * 0.01); d[o + 2] = 255 * (0.07 + core * 0.02); d[o + 3] = 255 * Math.pow(a, 0.8);
+  }
+  g.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+export function createDecals(scene, { count = 500 } = {}) {
+  const geo = new THREE.PlaneGeometry(1, 1);
   geo.rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshBasicMaterial({ color, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const mat = new THREE.MeshBasicMaterial({ map: splatterTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false; mesh.layers.set(LAYER_SPOT);
