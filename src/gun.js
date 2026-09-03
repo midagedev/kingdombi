@@ -273,7 +273,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     for (const c of [pick.z[0], pick.boss, pick.extra]) if (c && (!cand || c.d < cand.d)) cand = c;
     if (cand) {
       _d.set(cand.x - _o.x, cand.y - _o.y, cand.z - _o.z).normalize();
-      if (cand === pick.z[0]) { zh = pick.z; for (const h of zh) h.t = Math.hypot(h.x - _o.x, h.y - _o.y, h.z - _o.z); }
+      if (cand === pick.z[0]) { zh = pick.z; for (const h of zh) h.t = Math.hypot(h.x - _o.x, h.y - _o.y, h.z - _o.z); zh.sort((a, b) => a.t - b.t); }   // 카메라 거리순 → 총구 거리순(옆에서 쏠 때 둘이 어긋나면 관통이 한 명 빠졌다)
     } else {
       pitchPivot.getWorldDirection(_d); _d.negate(); // Group 의 forward 는 +z, 총구는 -z
       const spread = 0.010 + state.heat * 0.022;
