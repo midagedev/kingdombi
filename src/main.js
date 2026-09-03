@@ -152,7 +152,6 @@ style.textContent = `
     #boss { top: calc(max(env(safe-area-inset-top), 14px) + 58px) !important; width: 64% !important; }   /* 점수(우상단 34px 7자리) 아래로 — 390px 에선 보스 이름이 점수와 겹쳤다 */
     #boss div { height: 3px !important; } #boss i { height: 4px !important; } #boss span { font-size: 12px !important; opacity: .9 !important; }
     #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
-    #ret { width: 78px; height: 78px; }
     #bomb { width: 76px; height: 76px; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 160px); } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
     #lang { font-size: 12px; }
   }
@@ -309,6 +308,7 @@ const skills = createSkills(scene, { path, horde, gun, vehicle, fx, audio, look,
 // 예전엔 차선 한복판에서 들이받아 먹었는데 그 순간이 화면 밖이라 +25 만 뜨고 아무것도 안 보였다(2026-09-03). 정차·보스전엔 앞쪽에 하나 더 떨어진다.
 { const o = new THREE.Vector3(); for (let s = 70; s < ROUTE.end; s += 62 + dayRand() * 20) if (!ROUTE.stops.some((st) => Math.abs(st.s - s) < 14)) { path.at(s, (dayRand() < 0.5 ? -1 : 1) * (3.6 + dayRand() * 1.4), o); pickups.spawn(o.x, o.z, 'lane'); } }
 gun.hooks.onBodyHit = (body, x, y, z, time) => bosses.onBodyHit(body, x, y, z, time);
+gun.hooks.pickExtra = bosses.pickScreen;   // 조준 링 안의 공중 기와 덩어리
 // 雷 다연장로켓: 발사 순간 스탬프, 착탄마다(12발) 반경 안 좀비 즉사(날아감), 시체·파편 날림, 보스 쇠판·본체 피해 × mul(로켓 0.3)
 gun.hooks.onSalvo = () => { juice.stamp('雷'); game.shake = Math.max(game.shake, 0.5); };
 gun.hooks.onBlast = (x, z, R, time, mul = 1) => {
@@ -337,7 +337,7 @@ function resize() {
   renderer.setSize(w, h, false);
   const db = renderer.getDrawingBufferSize(new THREE.Vector2()); look.setSize(db.x, db.y);
   camera.aspect = w / h;
-  camera.fov = w > h ? 34 : 48;   // 좁은 화각 — 망원 압축으로 떼가 빽빽해 보인다
+  camera.fov = w > h ? 34 : 44;   // 좁은 화각 — 망원 압축으로 떼가 빽빽해 보인다(세로 48→44: 폰에서 좀비가 작았다)
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
@@ -374,7 +374,8 @@ const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3(), tmpV = new 
 // 대치(보스)는 위에서 내려다보고, 추격은 낮게 깔아 마차를 화면 아래 1/3 에 두고 그 너머로 떼가 밀려온다.
 const cam = {
   land: { h: 7, d: 14.0, look: 32, drop: 2.0 }, port: { h: 10.5, d: 20, look: 28, drop: 3.4 },
-  chaseLand: { h: 5.5, d: 14.0, look: 30, drop: 2.8 }, chasePort: { h: 8, d: 18, look: 27, drop: 3.2 },
+  // 추격 카메라(2026-09-03 라이트건 개편): 5.5/14/30 → 4.5/11/24. 정밀 조준이 필요 없어졌으니 낮고 가깝게 — 앞줄 좀비가 화면 높이의 1/4 로 커진다(전 1/10). 3.6 까지 내리면 로켓 포드가 길 가운데를 가린다.
+  chaseLand: { h: 4.5, d: 11, look: 24, drop: 1.9 }, chasePort: { h: 6, d: 13, look: 22, drop: 2.2 },
 };
 // 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
 // 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
@@ -414,7 +415,7 @@ function updateCamera(dt, rawDt = dt) {
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
   // 카메라 감각(2026-09-03): 손떨림 수준의 미세 흔들림(위치만 — 시선은 커서가 정한다) + 폭발·충격 때 화각이 살짝 벌어진다
   camera.position.x += Math.sin(game.time * 1.3) * 0.02; camera.position.y += Math.sin(game.time * 1.7 + 1.0) * 0.015;
-  const baseFov = innerWidth > innerHeight ? 34 : 48, fov = baseFov + Math.min(6, game.shake * 3.5);
+  const baseFov = innerWidth > innerHeight ? 34 : 44, fov = baseFov + Math.min(6, game.shake * 3.5);
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   game.shake *= Math.exp(-dt * 4);
   // 하늘·달·산은 카메라에 붙어 다닌다

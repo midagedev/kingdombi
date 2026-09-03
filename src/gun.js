@@ -24,6 +24,7 @@ function makeFlashTexture() {
 }
 
 const AIM_SPEED = +(new URLSearchParams(location.search).get('aimv') ?? 1.8);   // 스틱 끝까지 밀 때 초당 화면 몇 개를 가로지르나(?aimv=)
+const RING = +(new URLSearchParams(location.search).get('ring') ?? 0.05);         // 조준 링 반지름 = 화면 긴 변 × RING(?ring=). 링 안에 보이는 것이 맞는다
 export function createGun(scene, physics, horde, buildings, fx, audio, look, { parent = scene, onCollapse, camera = null }) {
   // ── 모델: 포좌(parent = 마차 mount) 위 받침 기둥 + 6열 개틀링 ──
   const root = new THREE.Group(); parent.add(root);
@@ -106,7 +107,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, g: 40, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
-  const hooks = { onBodyHit: null, onBlast: null, onBombKey: null, onSalvo: null };
+  const hooks = { onBodyHit: null, onBlast: null, onBombKey: null, onSalvo: null, pickExtra: null };   // pickExtra(cx,cy,Rpx,camera) → {x,y,z}|null: 링 안 추가 표적(보스가 던진 기와 덩어리)
   const RATE = 42;     // 발/초
   let fireAcc = 0;
 
@@ -187,8 +188,56 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     }
   }
 
+  // ── 화면 공간 명중(2026-09-03, 라이트건 규칙): 조준 링 안에 '보이는' 것이 맞는다. 카메라 투영으로 고르고, 총구 광선은 그 점을 향해 놓는다.
+  //   전엔 총구(마차 위 2.5 m)에서 포신 방향으로 나가는 가느다란 광선이 판정이라, 카메라(뒤 14 m·위 6 m)와의 시차로 가슴 높이 띠만 맞았고(머리를 겨누면 위로 빠지고 발을 겨누면 앞 땅에 박힘),
+  //   커서가 지평선 위면 가슴 평면과 만나지 않아 포신이 굳었다 — "피탄 면적이 좁다"·"보스전 조준이 내 맘 같지 않다"의 원인.
+  //   후보: 좀비(몸 투영 타원 + 링 반지름, 카메라 거리순 3+관통 명) · 보스 부위(카메라 광선 정확 판정 → 없으면 약점 상자 중심이 링 안) · 기와 덩어리(hooks.pickExtra).
+  const ringPx = () => Math.max(innerWidth, innerHeight) * RING;
+  const pick = { z: [], boss: null, extra: null };
+  const zPool = [];
+  const _sp = new THREE.Vector3(), _camR = new THREE.Vector3(), _bc = new THREE.Vector3();
+  function pickScreen(cx, cy) {
+    pick.z.length = 0; pick.boss = null; pick.extra = null;
+    if (!camera) return;
+    const R = ringPx(), hw = innerWidth / 2, hh = innerHeight / 2, tanF = Math.tan(camera.fov * Math.PI / 360);
+    const e = camera.matrixWorld.elements; _camR.set(e[0], e[1], e[2]).normalize();
+    let n = 0;
+    for (let i = 0; i < horde.N; i++) {
+      if (!horde.alive[i]) continue;
+      const sc = horde.scale[i], cyW = horde.py[i] + 1.0 * sc;
+      _sp.set(horde.px[i], cyW, horde.pz[i]);
+      const d = _sp.distanceTo(camera.position); if (d > 150) continue;
+      _sp.project(camera); if (_sp.z > 1) continue;
+      const sx = (_sp.x + 1) * hw, sy = (1 - _sp.y) * hh, ppm = hh / (d * tanF);   // ppm = 그 거리에서 1 m 가 몇 px 인가
+      const rx = 0.62 * sc * ppm + R, ry = 1.0 * sc * ppm + R, ex = (sx - cx) / rx, ey = (sy - cy) / ry;
+      if (ex * ex + ey * ey > 1) continue;
+      const rec = zPool[n] || (zPool[n] = { index: -1, t: 0, d: 0, x: 0, y: 0, z: 0 });
+      // 접점 = 커서가 몸 중심에서 벗어난 만큼(px→m) 몸 안에서 옮긴 점 — 머리를 겨누면 머리가 터지고 팔을 겨누면 팔이 떨어지는 문법이 산다
+      const ox = THREE.MathUtils.clamp((cx - sx) / ppm, -0.6 * sc, 0.6 * sc), oy = THREE.MathUtils.clamp((sy - cy) / ppm, -0.95 * sc, 0.9 * sc);
+      rec.index = i; rec.d = d; rec.x = horde.px[i] + _camR.x * ox; rec.y = cyW + oy; rec.z = horde.pz[i] + _camR.z * ox; n++;
+    }
+    if (n) { for (let k = 0; k < n; k++) pick.z.push(zPool[k]); pick.z.sort((a, b) => a.d - b.d); pick.z.length = Math.min(n, 3 + state.pierce); }
+    // 보스 부위
+    _ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1); _rc.setFromCamera(_ndc, camera);
+    for (const tg of targets) {
+      const r = tg.raycast(_rc.ray, 400);
+      if (r) { _sp.copy(_rc.ray.origin).addScaledVector(_rc.ray.direction, r.t); const d = r.t; if (!pick.boss || d < pick.boss.d) pick.boss = { tg, part: r.part, d, x: _sp.x, y: _sp.y, z: _sp.z }; continue; }
+      if (!tg.parts) continue;
+      for (const p of tg.parts) {
+        if (p.destroyed || p.kind === 'body') continue;
+        p.box.getCenter(_bc); const d = _bc.distanceTo(camera.position), half = p.box.min.distanceTo(p.box.max) * 0.5;
+        _sp.copy(_bc).project(camera); if (_sp.z > 1) continue;
+        const sx = (_sp.x + 1) * hw, sy = (1 - _sp.y) * hh, ppm = hh / (d * tanF);
+        if (Math.hypot(sx - cx, sy - cy) > R + half * ppm) continue;
+        if (!pick.boss || d < pick.boss.d) pick.boss = { tg, part: p, d, x: _bc.x, y: _bc.y, z: _bc.z };
+      }
+    }
+    const ex = hooks.pickExtra?.(cx, cy, R, camera); if (ex) pick.extra = { x: ex.x, y: ex.y, z: ex.z, d: Math.hypot(ex.x - camera.position.x, ex.y - camera.position.y, ex.z - camera.position.z) };
+  }
+
   // 매 프레임 조준 광선(퍼짐 없음)의 첫 접점. 링·잠금 링·좀비 하이라이트(horde 유니폼)가 여기서 나온다.
   function aim(time) {
+    if (state.live && state.follow) pickScreen(state.cur.x, state.cur.y); else { pick.z.length = 0; pick.boss = null; pick.extra = null; }
     muzzle.getWorldPosition(_o); pitchPivot.getWorldDirection(_d); _d.negate(); _ray.set(_o, _d);
     const MAX = 140; const a = state.aim;
     const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 1);
@@ -210,20 +259,29 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       reticle.style.opacity = state.showAim ? '1' : '0';
       reticle.classList.toggle('fire', state.firing && state.spin > 0.55); reticle.classList.toggle('hit', time - state.lastHit < 0.07);
       reticle.style.transform = `translate(${state.cur.x.toFixed(1)}px, ${state.cur.y.toFixed(1)}px) translate(-50%, -50%)`;
+      const D = `${(ringPx() * 2.5).toFixed(0)}px`; if (reticle.style.width !== D) reticle.style.width = reticle.style.height = D;   // 바깥 원(viewBox r 40/100) = 명중 반지름. 링이 곧 피탄 영역이다
     }
   }
 
   function fireOne(time) {
     state.shots++;
     muzzle.getWorldPosition(_o);
-    pitchPivot.getWorldDirection(_d); _d.negate(); // Group 의 forward 는 +z, 총구는 -z
-    const spread = 0.010 + state.heat * 0.022;
-    _d.x += (Math.random() - 0.5) * spread; _d.y += (Math.random() - 0.5) * spread; _d.z += (Math.random() - 0.5) * spread; _d.normalize();
-    _ray.set(_o, _d);
     const MAX = 260;
+    // 링 안의 표적(aim() 이 이 프레임에 골랐다): 카메라에 가장 가까운 것을 향해 총구 광선을 놓는다(퍼짐 없음). 보스·덩어리는 관통을 막는다.
+    // 링이 비었으면 포신 방향 + 퍼짐 — 건물·지면·시체는 여전히 겨눈 대로 맞는다.
+    let zh = null, cand = null;
+    for (const c of [pick.z[0], pick.boss, pick.extra]) if (c && (!cand || c.d < cand.d)) cand = c;
+    if (cand) {
+      _d.set(cand.x - _o.x, cand.y - _o.y, cand.z - _o.z).normalize();
+      if (cand === pick.z[0]) { zh = pick.z; for (const h of zh) h.t = Math.hypot(h.x - _o.x, h.y - _o.y, h.z - _o.z); }
+    } else {
+      pitchPivot.getWorldDirection(_d); _d.negate(); // Group 의 forward 는 +z, 총구는 -z
+      const spread = 0.010 + state.heat * 0.022;
+      _d.x += (Math.random() - 0.5) * spread; _d.y += (Math.random() - 0.5) * spread; _d.z += (Math.random() - 0.5) * spread; _d.normalize();
+    }
+    _ray.set(_o, _d);
 
-    // 1) 좀비 — 관통: 가까운 순 최대 3명, 대미지 감쇠. 건물·물리에 먼저 막히면 그 앞까지만.
-    const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 4 + state.pierce);
+    // 1) 좀비 — 링 안 카메라 거리순 최대 3+관통 명, 대미지 감쇠. 건물·물리에 먼저 막히면 그 앞까지만.
     const z = zh ? zh[0] : null;
     let t = zh ? zh[zh.length - 1].t : MAX;
     // 2) 건물 부위
@@ -362,7 +420,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     // 보스·수리 상자처럼 키 큰 표적은 화면 광선이 그 부위 상자에 닿은 점을 쓴다 — 가슴 높이 평면만 쓰면 巨人 가슴을 클릭해도 보스 뒤 88 m 지면을 겨눈다(실측)
     let th = null; for (const tg of targets) { const r = tg.raycast(_rc.ray, 400); if (r && r.t < (th ? th.t : Infinity)) th = r; }
     if (th) _pt.copy(_rc.ray.origin).addScaledVector(_rc.ray.direction, th.t);
-    else if (!_rc.ray.intersectPlane(_plane, _pt)) return;
+    else if (!_rc.ray.intersectPlane(_plane, _pt)) _pt.copy(_rc.ray.origin).addScaledVector(_rc.ray.direction, 80);   // 지평선 위(하늘·보스 머리 옆): 예전엔 return 이라 포신이 굳었다 — 화면 광선 방향을 겨눈다
     muzzle.getWorldPosition(_o);
     const f = state.facing || 0;
     let dx = _pt.x - _o.x, dz = _pt.z - _o.z, dy = _pt.y - _o.y;

@@ -141,7 +141,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
         if ((b.lastStep < 0) !== (stepPhase < 0)) { const side = stepPhase < 0 ? -1 : 1; const fx0 = root.position.x + Math.cos(root.rotation.y) * side * 0.12 * S, fz0 = root.position.z - Math.sin(root.rotation.y) * side * 0.12 * S; if (horde.crushNear(fx0, fz0, 3.2, time)) { audio.stomp?.(); game.shake = Math.max(game.shake, 0.35); } }
         b.lastStep = stepPhase;
       } else if (b.state === 'wind') {
-        if (b.stateT > 0.9) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(14); horde.crushNear(root.position.x - ax.x * 6, root.position.z - ax.z * 6, 7, time); }   // 마차 반대쪽 6m
+        if (b.stateT > 0.9) { b.state = 'slam'; b.stateT = 0; audio.stomp?.(); look.state.flash = Math.max(look.state.flash, 0.35); game.shake = 1.2; onDamage(10); horde.crushNear(root.position.x - ax.x * 6, root.position.z - ax.z * 6, 7, time); }   // 마차 반대쪽 6m
       } else if (b.state === 'slam') { if (b.stateT > 0.5) { b.state = 'rest'; b.stateT = 0; } }
       else if (b.state === 'rest') { if (b.stateT > 1.6) { b.state = dist > b.stopDist + 3 ? 'walk' : 'wind'; b.stateT = 0; } }
       // 걷기 애니메이션
@@ -240,7 +240,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
         if (dist > 11) { const s = Math.sign(d) * 10 * dt; root.position.x += ax.x * s + (tx - d * ax.x) * dt * 0.6; root.position.z += ax.z * s + (tz - d * ax.z) * dt * 0.6; moving = 2; headG.getWorldPosition(_w); if (horde.crushNear(_w.x, _w.z, 4.5, time)) fx.blood.burst(_w.x, _w.y - 1, _w.z, 8, { dirY: 0.6, spread: 1.2, power: 7, scale: 1.1, time }); }   // 돌진: 앞을 막은 떼를 머리로 쓸어 날린다
         else { b.state = 'bite'; b.stateT = 0; }
       } else if (b.state === 'bite') {
-        if (b.stateT > 0.42 && !b.bit) { b.bit = true; onDamage(22); look.state.flash = Math.max(look.state.flash, 0.45); game.shake = 1.6; audio.collapse(0.7); fx.blood.burst(vp.x - ax.x * 2, 3, vp.z - ax.z * 2, 20, { dirY: 0.7, spread: 1.4, power: 8, scale: 1.2, time }); }
+        if (b.stateT > 0.42 && !b.bit) { b.bit = true; onDamage(15); look.state.flash = Math.max(look.state.flash, 0.45); game.shake = 1.6; audio.collapse(0.7); fx.blood.burst(vp.x - ax.x * 2, 3, vp.z - ax.z * 2, 20, { dirY: 0.7, spread: 1.4, power: 8, scale: 1.2, time }); }
         if (b.stateT > 1.0) { b.state = 'retreat'; b.stateT = 0; b.bit = false; }
       } else if (b.state === 'retreat') {
         if (dist < b.holdDist && along - Math.sign(d) * 6 * dt >= b.minAlong) { const s = Math.sign(d) * 6 * dt; root.position.x -= ax.x * s; root.position.z -= ax.z * s; moving = 1; } else { b.state = 'hold'; b.stateT = 0; }
@@ -295,7 +295,7 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       q.mesh.position.set(t.x, t.y, t.z); q.mesh.quaternion.set(r.x, r.y, r.z, r.w);
       const vp = vehicle.pos; const d = Math.hypot(t.x - vp.x, t.z - vp.z);
       if (!q.landed && t.y < 0.9 && d >= 4.5) q.landed = true;   // 빗나가 땅에 떨어진 덩어리 — 더는 표적이 아니다
-      if (!q.landed && (t.y < 2.6 && d < 4.5)) { q.landed = true; onDamage(18); look.state.flash = Math.max(look.state.flash, 0.5); game.shake = 1.8; audio.collapse(0.9); fx.shards.burst(t.x, t.y, t.z, 30, { dirY: 0.7, spread: 1.5, power: 7, scale: 1.2, time }); removeQte(q); continue; }
+      if (!q.landed && (t.y < 2.6 && d < 4.5)) { q.landed = true; onDamage(12); look.state.flash = Math.max(look.state.flash, 0.5); game.shake = 1.8; audio.collapse(0.9); fx.shards.burst(t.x, t.y, t.z, 30, { dirY: 0.7, spread: 1.5, power: 7, scale: 1.2, time }); removeQte(q); continue; }
       if (time - q.born > 6 || t.y < -2) { removeQte(q); continue; }
       if (!shown && !q.landed && time - q.born < 3.2) {
         _proj.set(t.x, t.y, t.z).project(camera);
@@ -303,6 +303,19 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
       }
     }
     if (!shown) reticle.hidden = true;
+  }
+
+  // 조준 링 안(반지름 R px + 여유 30)의 공중 기와 덩어리 — gun.hooks.pickExtra. 라이트건 규칙(2026-09-03)
+  const _pk = new THREE.Vector3(); let pkOut = { x: 0, y: 0, z: 0 };
+  function pickScreen(cx, cy, R, cam) {
+    let best = null, bd = Infinity;
+    for (const q of qtes) {
+      if (q.landed) continue; const t = q.body.translation(); if (t.y < 1.5) continue;
+      _pk.set(t.x, t.y, t.z).project(cam); if (_pk.z > 1) continue;
+      const dd = Math.hypot((_pk.x * 0.5 + 0.5) * innerWidth - cx, (-_pk.y * 0.5 + 0.5) * innerHeight - cy);
+      if (dd < R + 30 && dd < bd) { bd = dd; best = t; }
+    }
+    if (!best) return null; pkOut.x = best.x; pkOut.y = best.y; pkOut.z = best.z; return pkOut;
   }
 
   function spawn(kind, x, z, time, axis = { x: 0, z: 1 }) {   // axis = 보스에서 마차를 향하는 수평 단위 벡터
@@ -343,5 +356,5 @@ export function createBosses(scene, physics, { fx, audio, look, juice, horde, gu
     const p = boss.parts.find((p) => (p.kind === 'skull' || p.kind === 'plate') && !p.destroyed) || boss.parts[0];
     return p.mesh.getWorldPosition(out);
   }
-  return { spawn, update, onBodyHit, aimPoint, get active() { return boss; }, qtes };
+  return { spawn, update, onBodyHit, aimPoint, pickScreen, get active() { return boss; }, qtes };
 }
