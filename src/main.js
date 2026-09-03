@@ -452,7 +452,7 @@ function startFlip(to, then, time) {
   director.flipFrom = facing.rel; director.flipTo = to; director.flipThen = then;
   director.phase = 'flip'; director.stateT = 0;
   facing.chase = Math.abs(to) > 1; horde.chase = facing.chase;
-  if (facing.chase) { applyDistrict(districtAt(sV())); director.wave.active = false; director.wave.calmT = 1.2; horde.pool = 0; horde.strikeMul = 1; horde.spawnRate = 30; } else horde.speedMul = 1;   // 추격전은 마차가 달아나므로 떼가 구역 배율만큼 빨라야 붙는다. 추격으로 돌 때 파 시계를 다시 맞춘다
+  if (facing.chase) { applyDistrict(districtAt(sV())); director.wave.active = false; director.wave.calmT = 1.2; horde.pool = 0; horde.strikeMul = 1; horde.spawnRate = 45; } else horde.speedMul = 1;   // 추격전은 마차가 달아나므로 떼가 구역 배율만큼 빨라야 붙는다. 추격으로 돌 때 파 시계를 다시 맞춘다
   horde.recycleSide(facing.chase ? -1 : 1, time);
   cullBuildings();   // 전환 중엔 양방향 창 — 카메라가 돌아가며 보게 될 쪽 집이 미리 켜져 있어야 한다
 }
@@ -472,8 +472,8 @@ function toBoss(time) {
 }
 function startWave(time) {
   const W = director.wave; W.n++; W.active = true; W.t0 = time;
-  W.size = Math.min(220, Math.round((56 + 18 * W.n) * (director.district?.cap ?? 0.75)));
-  horde.spawnRate = W.n === 1 ? 12 : 30; horde.windMul = W.n === 1 ? 1.6 : 1;   // 1파는 천천히·웅크림 길게(마차가 아직 느리다 — 30/초로 쏟으면 첫 6초에 장갑 −33, 안 쏘면 7~10초에 5번 덤벼든다)   // 1파 55 → 69 → 82 … 학살감은 밀도에서 온다(26+12n 은 18초에 29 마리 — 심심했다)
+  W.size = Math.min(220, Math.round((70 + 22 * W.n) * (director.district?.cap ?? 0.75)));   // 2026-09-04 56+18n → 70+22n("훨씬 더 많이 나와도 괜찮겠어") — 69·84·99…
+  horde.spawnRate = W.n === 1 ? 12 : 45; horde.windMul = W.n === 1 ? 1.6 : 1;   // 1파는 천천히·웅크림 길게(마차가 아직 느리다 — 30/초로 쏟으면 첫 6초에 장갑 −33, 안 쏘면 7~10초에 5번 덤벼든다)   // 1파 55 → 69 → 82 … 학살감은 밀도에서 온다(26+12n 은 18초에 29 마리 — 심심했다)
   if (horde.stats.alive > W.size) horde.trimTo(W.size, time);        // 타이틀에 깔려 있던 270 마리가 1파가 되면 40초가 걸린다 — 먼 놈부터 조용히 치운다(전환 회전 중이라 안 보인다)
   horde.startWave(Math.max(0, W.size - horde.stats.alive), time);   // 이미 서 있는 놈들도 이번 파다
 }
@@ -510,6 +510,8 @@ function updateDirector(dt, time) {
     // 꼬리 광란: 소환이 끝나고 20% 이하(또는 6 마리)만 남으면 남은 놈들이 1.8배로 미쳐 달려온다 — 처지는 꼬리를 위협 한 방으로 바꿔 파를 끝낸다
     const tail = W.active && horde.pool <= 0 && horde.stats.alive <= Math.max(6, W.size * 0.2);
     horde.speedMul = (director.district?.speed ?? 1.15) * (tail ? 1.8 : 1);
+    // 꼬리가 4초를 넘기면 낙오 기준을 20 m 로 당겨 남은 놈을 마차 뒤로 끌어온다(2026-09-04) — 봇 실측: 1파 끝에 한 놈이 12초 동안 掃 를 막았다
+    W.tailT = tail ? (W.tailT || 0) + dt : 0; horde.lagger = W.tailT > 4 ? 20 : 62;
     vehicle.state.targetSpeed = brake ? 0 : (W.sprintT > 0 ? 6.5 : director.driveSpeed);
     if (stop && stop.boss && vehicle.state.speed < 0.05 && sV() < stop.s && sV() >= stop.s - 6) vehicle.state.s = stop.s;
     const d = districtAt(sV());
@@ -650,7 +652,7 @@ renderer.setAnimationLoop((now) => {
   if (running && time > game.nextLightning) {
     game.nextLightning = time + 9 + Math.random() * 16;
     look.state.flash = Math.max(look.state.flash, 0.65);
-    moon.intensity = 16;
+    moon.intensity = 16; horde.uniforms.uBolt.value = time;   // 떼가 흰 실루엣으로 확 드러난다(horde.js GLOW/BODY_FRAG)
     setTimeout(() => audio.thunder(), 500 + Math.random() * 600);
   }
   moon.intensity += (5.2 - moon.intensity) * Math.min(1, dt * 6);

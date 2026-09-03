@@ -80,7 +80,7 @@ const COMPOSITE = /* glsl */`
     float g = hash(vUv * vec2(1920.0, 1080.0) + fract(time * 13.0)) - 0.5;
     ink += g * 0.06;
     vec2 q = vUv - 0.5;
-    ink *= 1.0 - dot(q, q) * 1.1;
+    ink *= 1.0 - dot(q, q) * 0.6;                            // 비네트(2026-09-04 1.1→0.6): 덤벼드는 놈이 서는 화면 아래·옆이 가장 어두운 자리였다
 
     // 색 완화(2026-09-03): 순수 흑백은 보스·소품·좀비 종류 가시성을 깎았다. 잉크 명도 위에 원래 색조를 tint 만큼 얹는다.
     // 색조 = 색/명도(명도 1 로 정규화) → 잉크 값에 곱해 대비는 그대로, 색만 배어 나온다. 채도는 살짝 눌러 씬시티의 '바랜 색'.
@@ -147,7 +147,7 @@ export function createLook(renderer, scene, camera) {
   quadScene.add(quad);
 
   const spotClear = new THREE.Color(0x000000);
-  const state = { flash: 0, rain: 0.5, darkness: 0, blood: 0, invert: 0, hurt: 0, tint: +(new URLSearchParams(location.search).get('tint') ?? 0.4) };   // ?tint=0..1 (2026-09-03: 0.3→0.4)
+  const state = { flash: 0, rain: 0.5, darkness: +(new URLSearchParams(location.search).get('dark') ?? -0.3), blood: 0, invert: 0, hurt: 0, tint: +(new URLSearchParams(location.search).get('tint') ?? 0.4) };   // ?tint=0..1 (2026-09-03: 0.3→0.4) · ?dark=-0.6..0.5 (2026-09-04: 0→-0.3 — "침침해서 좀비가 안 보인다". 새벽은 -0.6 까지 내려간다)
 
   function blit(mat, target) {
     quad.material = mat;

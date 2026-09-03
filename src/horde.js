@@ -178,7 +178,7 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
 // 몸체: 잉크 실루엣. 위에서 오는 달빛만 아주 약하게 형태를 남긴다.
 const BODY_FRAG = /* glsl */`
   precision highp float;
-  uniform vec3 uMoonDir; uniform float uTime;
+  uniform vec3 uMoonDir; uniform float uTime; uniform float uBolt;
   varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying vec3 vWorld;
   void main() {
     vec3 n = normalize(vNormalW);
@@ -186,7 +186,8 @@ const BODY_FRAG = /* glsl */`
     vec3 v = normalize(cameraPosition - vWorld);
     float rim = pow(1.0 - max(0.0, dot(n, v)), 3.0);        // 프레넬 림 — 전열이 검은 덩어리가 아닌 '몸'으로 읽힌다(라이트 0)
     float hit = exp(-(uTime - vHit) * 14.0);
-    vec3 c = vec3(0.02) + top * 0.10 + rim * 0.28 + hit * 0.65;   // 피격 순간 실루엣이 종이처럼 하얘진다(0.9→0.65: 떼 전체가 깜빡이는 소음을 줄임)
+    float bolt = exp(-(uTime - uBolt) * 3.5);
+    vec3 c = vec3(0.08) + top * 0.18 + rim * 0.28 + hit * 0.65 + bolt * 0.55;   // 기본 0.02→0.08(2026-09-04): 잉크 커브의 발(toe) 아래라 길과 한 덩어리였다. 번개(uBolt)엔 종이처럼 하얘진다   // 피격 순간 실루엣이 종이처럼 하얘진다(0.9→0.65: 떼 전체가 깜빡이는 소음을 줄임)
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -194,7 +195,7 @@ const BODY_FRAG = /* glsl */`
 // 발광(스팟 레이어): 보라 눈 + 핏줄. 케데헌 데몬 감각의 보랏빛 문양.
 const GLOW_FRAG = /* glsl */`
   precision highp float;
-  uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood;
+  uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood; uniform float uBolt; uniform float uDead;
   varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying float vType; varying vec3 vWorld; varying float vMark; varying float vWind;
   void main() {
     float g = 0.0;
@@ -202,6 +203,13 @@ const GLOW_FRAG = /* glsl */`
     // 덤벼들기 텔: 온몸이 붉게 달아오르며 점점 빠르게 박동 — '지금 저놈을 쏘라'
     if (vWind > 0.0) { col = mix(col, uBlood, 0.85 * vWind); g += vWind * (0.7 + 0.5 * sin(uTime * (10.0 + 30.0 * vWind))); }
     float camD = length(cameraPosition - vWorld);
+    vec3 n = normalize(vNormalW), v = normalize(cameraPosition - vWorld);
+    float rim = pow(1.0 - max(0.0, dot(n, v)), 1.6);
+    // 자주색 림(2026-09-04): 모든 산 좀비의 가장자리가 은은히 빛난다 — 잉크 커브 뒤에 더해지는 글로우라 화면이 아무리 어두워도 실루엣이 읽힌다. 70 m 너머는 눈만.
+    g += rim * 0.7 * (1.0 - uDead) * (1.0 - smoothstep(35.0, 70.0, camD));
+    // 번개(uBolt = 마지막 번개 시각): 떼 전체가 흰빛으로 확 드러나고 0.5초에 걸쳐 잦아든다
+    float bolt = exp(-(uTime - uBolt) * 3.5);
+    g += bolt * (0.5 + rim * 1.6); col = mix(col, vec3(0.92, 0.88, 1.0), bolt * 0.75);
     float eyeR = vType == 1.0 ? 0.085 : 0.06;
     if (vBone == 2.0) {
       // 눈: 머리 전면(+z) 두 점
@@ -226,8 +234,6 @@ const GLOW_FRAG = /* glsl */`
     g += hit * 1.2;
     // 조준선 위의 좀비: 호박색 림 — '지금 쏘면 이놈이 맞는다'
     if (vMark > 0.01) {
-      vec3 n = normalize(vNormalW), v = normalize(cameraPosition - vWorld);
-      float rim = pow(1.0 - max(0.0, dot(n, v)), 1.6);
       g += vMark * (0.5 + rim * 2.4); col = mix(col, vec3(1.0, 0.68, 0.25), vMark * 0.9);
     }
     if (g < 0.02) discard;
@@ -258,7 +264,7 @@ export function createHorde(scene, physics, {
   const iGone = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iGone.setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone); geo.setAttribute('iWind', iWind);
 
-  const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
+  const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uBolt: { value: -100 }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
   const bodyMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: BODY_FRAG, uniforms, side: THREE.DoubleSide });   // 옷·머리카락 판(양면)
   const glowMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: GLOW_FRAG, uniforms, depthWrite: false, blending: THREE.AdditiveBlending, transparent: true });
   const depthMat = new THREE.ShaderMaterial({ vertexShader: BODY_VERT, fragmentShader: DEPTH_FRAG, uniforms, side: THREE.DoubleSide });
@@ -379,7 +385,7 @@ export function createHorde(scene, physics, {
       // 추격(뒤를 봄): 95m 넘게 처지거나 마차를 25m 앞질렀을 때. 보스(앞을 봄): 뒤로 45m 처졌을 때.
       const dzt = rail.s - alongS(px[i], pz[i]);   // 옛 pz−target.z ≡ −(s_i−s_v)
       // 추격 낙오 62 m(전 95): 못 따라오는 놈이 파를 끝내지 못하게 붙잡는다 — 재배치돼 14~55 m 뒤에서 다시 온다
-      if (H.chase ? (dzt > 62 || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
+      if (H.chase ? (dzt > H.lagger || dzt < -25) : (dzt > 45)) { alive[i] = 0; relocate[i] = 1; wind[i] = 0; iWind.setX(i, 0); respawnAt[i] = time + 0.3 + Math.random() * 1.5; m.makeScale(0, 0, 0); body.setMatrixAt(i, m); continue; }
       aliveCount++;
       // 지붕 위·낙하 중(2026-09-03): seek·분리·회피 없이 제 갈 길만 간다. 지붕 위에선 마차 쪽으로 기어가며 용마루(top−0.5)→처마(top·0.55) 로 내려오고, AABB(처마선) 를 넘으면 살짝 뛰어 떨어진다.
       let air = false; const rb = roofB[i];
@@ -607,6 +613,6 @@ export function createHorde(scene, physics, {
 
   // 파 시작: 앞으로 n 마리를 소환할 수 있다(pool). 죽어 있는 슬롯은 곧바로 나올 수 있게 예약 시각을 당긴다. 재배치 대기는 그대로.
   function startWave(n, time) { H.pool = n; for (let i = 0; i < N; i++) if (!alive[i] && !relocate[i]) respawnAt[i] = time + Math.random() * 0.4; }
-  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
+  const H = { update, raycast, damage, kill, crushNear, ram, aura, recycleSide, trimTo, startWave, mix, stats, rail, hooks, px, pz, py, wind, roofB, vx, vz, alive, type, scale, N, body, glow, uniforms, causeOverride: null, impaleMul: 1, strikeMul: 1, windMul: 1, chase: false, lagger: 62, budget: N, speedMul: 1, pool: Infinity, spawnRate: 30, seek: { x: target.x, z: target.z } };
   return H;
 }

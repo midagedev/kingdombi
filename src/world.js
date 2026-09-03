@@ -27,12 +27,12 @@ export const ROUTE = {
     { s: 464, name: '궁궐 광장', sub: '문이 열려 있다', boss: 'rex', quota: 380, cap: 130, mix: { brute: 0.08, bomber: 0.15, runner: 0.22 } },
   ],
   // 추격 압박 곡선(2026-09-03): 구역이 바뀔 때 떼의 정원(cap, 전체 좀비 수 비율)·종류 비율(mix)·속도 배율(speed)이 오른다.
-  // speed 1.45~1.65(전 1.15~1.3): 마차 5 m/s 보다 모두 빨라야 파가 밀물처럼 닥쳐 12 m 뒤에 뭉친다 — 느리면 14~55 m 에 흩어져 작은 점을 하나씩 잡는 게임이 된다(실측 3 킬/초).
+  // speed 1.6~1.8(2026-09-04, 전 1.45~1.65 — "더 공격적으로 와도 괜찮겠어"): 마차 5 m/s 보다 모두 빨라야 파가 밀물처럼 닥쳐 12 m 뒤에 뭉친다 — 느리면 14~55 m 에 흩어져 작은 점을 하나씩 잡는 게임이 된다(실측 3 킬/초).
   // speed 는 마차 5.0 m/s 를 보통형(3.6~5.2)이 따라잡을 만큼은 돼야 한다 — 1.15 면 절반, 1.3 이면 대부분이 붙는다.
   districts: [
-    { s1: 164, name: '초가 마을', choga: 0.85, wall: 0.25, cap: 0.75, speed: 1.45, mix: { brute: 0.02, bomber: 0.06, runner: 0.14 }, props: ['haystack', 'jangdokdae', 'well', 'jige', 'chicken-coop', 'brush-fence', 'mortar-pestle', 'straw-mat'], lane: ['haystack', 'jige', 'straw-mat'] },
-    { s1: 314, name: '기와 골목', choga: 0.45, wall: 0.7, cap: 0.9, speed: 1.55, mix: { brute: 0.04, bomber: 0.10, runner: 0.20 }, props: ['stone-lantern', 'jangdokdae', 'stone-wall', 'straw-mat', 'jangseung-pair', 'garden-rock', 'well'], lane: ['jangdokdae', 'haystack', 'jangseung'] },
-    { s1: 464, name: '육조 거리', choga: 0.1, wall: 0.9, cap: 1.0, speed: 1.65, mix: { brute: 0.07, bomber: 0.14, runner: 0.26 }, props: ['stone-lantern', 'haetae', 'pagoda', 'rank-stones', 'ding-censer', 'stone-wall', 'danggan'], lane: ['stone-lantern', 'haetae', 'rank-stones'] },
+    { s1: 164, name: '초가 마을', choga: 0.85, wall: 0.25, cap: 0.75, speed: 1.6, mix: { brute: 0.02, bomber: 0.06, runner: 0.14 }, props: ['haystack', 'jangdokdae', 'well', 'jige', 'chicken-coop', 'brush-fence', 'mortar-pestle', 'straw-mat'], lane: ['haystack', 'jige', 'straw-mat'] },
+    { s1: 314, name: '기와 골목', choga: 0.45, wall: 0.7, cap: 0.9, speed: 1.7, mix: { brute: 0.04, bomber: 0.10, runner: 0.20 }, props: ['stone-lantern', 'jangdokdae', 'stone-wall', 'straw-mat', 'jangseung-pair', 'garden-rock', 'well'], lane: ['jangdokdae', 'haystack', 'jangseung'] },
+    { s1: 464, name: '육조 거리', choga: 0.1, wall: 0.9, cap: 1.0, speed: 1.8, mix: { brute: 0.07, bomber: 0.14, runner: 0.26 }, props: ['stone-lantern', 'haetae', 'pagoda', 'rank-stones', 'ding-censer', 'stone-wall', 'danggan'], lane: ['stone-lantern', 'haetae', 'rank-stones'] },
   ],
 };
 export const createRoutePath = () => createPath({ start: ROUTE.start, corners: ROUTE.corners, R: ROUTE.R, roadHalf: ROAD_HALF });
