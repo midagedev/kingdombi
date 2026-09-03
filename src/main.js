@@ -473,7 +473,7 @@ function toBoss(time) {
 function startWave(time) {
   const W = director.wave; W.n++; W.active = true; W.t0 = time;
   W.size = Math.min(220, Math.round((56 + 18 * W.n) * (director.district?.cap ?? 0.75)));
-  horde.spawnRate = W.n === 1 ? 12 : 30;   // 1파는 천천히(마차가 아직 느리다 — 30/초로 쏟으면 첫 6초에 장갑 −33)   // 1파 55 → 69 → 82 … 학살감은 밀도에서 온다(26+12n 은 18초에 29 마리 — 심심했다)
+  horde.spawnRate = W.n === 1 ? 12 : 30; horde.windMul = W.n === 1 ? 1.6 : 1;   // 1파는 천천히·웅크림 길게(마차가 아직 느리다 — 30/초로 쏟으면 첫 6초에 장갑 −33, 안 쏘면 7~10초에 5번 덤벼든다)   // 1파 55 → 69 → 82 … 학살감은 밀도에서 온다(26+12n 은 18초에 29 마리 — 심심했다)
   if (horde.stats.alive > W.size) horde.trimTo(W.size, time);        // 타이틀에 깔려 있던 270 마리가 1파가 되면 40초가 걸린다 — 먼 놈부터 조용히 치운다(전환 회전 중이라 안 보인다)
   horde.startWave(Math.max(0, W.size - horde.stats.alive), time);   // 이미 서 있는 놈들도 이번 파다
 }
