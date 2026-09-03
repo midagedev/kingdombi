@@ -108,6 +108,7 @@ hud.innerHTML = `
   <div id="gauges"><div id="hp"><i id="hpFill"></i></div><div class="lbl"><span id="hpN">100</span> ${S.armor}</div></div>
   <div id="bomb"><b>雷</b><span id="bombDots"></span></div>
   <div id="stick"><i></i></div>
+  <div id="ret"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round"><circle class="o" cx="50" cy="50" r="40"/><g class="spin"><circle cx="50" cy="50" r="29" stroke-dasharray="15 30.5"/></g><path class="t" d="M50 0v16M50 84v16M0 50h16M84 50h16"/><circle class="c" cx="50" cy="50" r="3.5"/></svg></div>
   <div id="title"><div class="mark">K I N G D O M B I</div><div class="t1">킹덤비</div><div class="rule"></div><div class="coin">INSERT COIN</div><div class="t3">${S.titleLines(DAY, ROUTE.start - ROUTE.end, isMobile)}</div></div>
   <div id="lang"><span data-l="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</span><span data-l="en" class="${LANG === 'en' ? 'on' : ''}">EN</span><span id="calm" class="${CALM ? 'on' : ''}">${S.calm}</span></div>
   <div id="cont"><div class="mark">CONTINUE?</div><div class="n">9</div><div class="t3">${S.contHint}</div></div>
@@ -132,6 +133,17 @@ style.textContent = `
   #bomb span { display:flex; gap:4px; margin-top:5px; } #bomb span i { width:5px; height:5px; border-radius:50%; background:#ffb347; display:block; }
   #stick { position:absolute; right:22px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 18px); width:108px; height:108px; margin:-54px 0 0 -54px; border:1px solid rgba(233,230,223,.45); border-radius:50%; opacity:0; pointer-events:none; }
   #stick.hint { opacity:.22; transition: opacity .4s; } #stick.on { opacity:.8; }
+  /* 오락실 라이트건 조준선: 바깥 원 + 네 눈금 + 천천히 도는 끊긴 안쪽 원 + 호박 점. 포신 방향(가슴 높이 접점)을 화면에 투영, 어디에도 붙지 않는다.
+     .fire = 발사 중(커지고 호박색), .hit = 명중 순간(중심점 튐) */
+  #ret { position:absolute; left:0; top:0; width:66px; height:66px; opacity:0; pointer-events:none; will-change: transform; filter: drop-shadow(0 0 2px rgba(0,0,0,.95)); transition: opacity .15s; }
+  #ret svg { width:100%; height:100%; overflow:visible; transition: transform .08s; }
+  #ret .o { stroke: rgba(233,230,223,.9); stroke-width:3; transition: stroke .08s; }
+  #ret .t { stroke: rgba(233,230,223,.95); stroke-width:3.2; }
+  #ret .spin { transform-origin: 50% 50%; animation: retspin 5s linear infinite; } #ret .spin circle { stroke: rgba(233,230,223,.55); stroke-width:2.2; }
+  #ret .c { fill:#ffb347; transform-origin: 50% 50%; transition: transform .06s; }
+  #ret.fire svg { transform: scale(1.12); } #ret.fire .o { stroke:#ffb347; } #ret.fire .spin { animation-duration: 1.2s; }
+  #ret.hit .c { transform: scale(2.2); }
+  @keyframes retspin { to { transform: rotate(360deg); } }
   #stick i { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; background: rgba(233,230,223,.5); box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
   #lang { position:absolute; top: max(env(safe-area-inset-top), 14px); left: 16px; font: 300 11px/1 var(--mono); letter-spacing:.2em; pointer-events:auto; display:flex; gap:14px; opacity:.55; }
   #lang span { cursor:pointer; padding: 6px 0; } #lang span.on { color:#e6c87a; border-bottom:1px solid #e6c87a; } #lang #calm { margin-left: 10px; }
@@ -149,6 +161,7 @@ style.textContent = `
     #boss { top: calc(max(env(safe-area-inset-top), 14px) + 58px) !important; width: 64% !important; }   /* 점수(우상단 34px 7자리) 아래로 — 390px 에선 보스 이름이 점수와 겹쳤다 */
     #boss div { height: 3px !important; } #boss i { height: 4px !important; } #boss span { font-size: 12px !important; opacity: .9 !important; }
     #banner { font-size: 14px !important; } #pops div { font-size: 16px !important; } #combo b { font-size: 26px !important; } #combo span { font-size: 12px !important; }
+    #ret { width: 78px; height: 78px; }
     #bomb { width: 76px; height: 76px; right: 18px; bottom: calc(max(env(safe-area-inset-bottom), 18px) + 160px); } #bomb b { font-size: 30px; } #bomb span i { width: 7px; height: 7px; }
     #title .t1 { font-size: 64px; } #title .t3 { font-size: 14px; line-height: 1.8; }
     #lang { font-size: 12px; }
@@ -268,7 +281,8 @@ const juice = createJuice(hud);
 const nightlife = createNightlife(scene, world.buildings, { playerZ: ROUTE.start, maxLights: 0 });   // 라이트 예산: 거리등 2 + 총구 + 화재 1
 const audio = createAudio();
 const gun = createGun(scene, physics, horde, world.buildings, fx, audio, look, { camera, parent: vehicle.mount, onCollapse: (b) => { nightlife.onBuildingCollapsed(b); if (b.kind !== 'prop') { const c = b.center, sz = b.bounds.getSize(new THREE.Vector3()); fires.ignite(c.x, c.z, Math.min(sz.x, sz.z) * 0.45); game.razed++; juice.stamp('滅'); addScore(b.kind === 'palace' ? 20000 : 800, b.kind === 'palace' ? '宮' : '家'); } else addScore(50); } });
-gun.attachInput(canvas, { stickEl: $('stick'), forceStick: q.has('stick') });   // 터치는 조이스틱, 마우스는 드래그. ?stick=1 로 강제
+gun.attachInput(canvas, { stickEl: $('stick'), forceStick: q.has('stick') });
+gun.setReticle($('ret'));   // 터치는 조이스틱, 마우스는 드래그. ?stick=1 로 강제
 const bosses = createBosses(scene, physics, {
   fx, audio, look, juice, horde, gun, vehicle, game, hud, camera,
   onScore: (n, glyph) => addScore(n, glyph),

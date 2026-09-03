@@ -88,13 +88,11 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
 
   // ── 조준점: 바닥 링(조준 광선이 닿는 자리) + 잠금 링(좀비·보스 접점). 스팟 레이어, 깊이 무시 — 떼 뒤에서도 보인다 ──
-  const RET = new THREE.MeshBasicMaterial({ color: 0xffb347, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.95, 40), RET); ring.rotation.x = -Math.PI / 2; ring.layers.set(LAYER_SPOT); ring.renderOrder = 5; ring.visible = false; scene.add(ring);
-  const lockTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.arc(32, 32, 22, 0, 6.2832); g.stroke(); g.fillRect(30, 30, 4, 4); for (const [x, y, w, h] of [[30, 2, 4, 10], [30, 52, 4, 10], [2, 30, 10, 4], [52, 30, 10, 4]]) g.fillRect(x, y, w, h); return new THREE.CanvasTexture(c); })();
-  const lock = new THREE.Sprite(new THREE.SpriteMaterial({ map: lockTex, color: 0xff4a3c, depthTest: false, depthWrite: false, transparent: true })); lock.scale.setScalar(1.1); lock.layers.set(LAYER_SPOT); lock.renderOrder = 6; lock.visible = false; scene.add(lock);
+  // 조준 링·잠금 링은 뺐다(2026-09-03 3차): 광선이 좀비 몸통 1 m 안을 지나면 링이 바닥에서 몸으로 뛰며 붉어져 자동조준으로 읽혔다. 대신 2D 조준점(DOM, setReticle) — 포신 방향을 1:1 로 따르고 어디에도 붙지 않는다.
+  let reticle = null; const setReticle = (el) => { reticle = el; };
 
   // ── 상태 ──
-  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
+  const state = { yaw: 0, pitch: -0.06, facing: 0, firing: false, firingPtr: false, live: false, spin: 0, heat: 0, jammed: 0, shots: 0, hits: 0, recoil: 0, lastHit: -1e9, pitchMax: 0.2, bombs: 3, bombsMax: 3, showAim: false, pierce: 0, rateMul: 1,
     aim: { x: 0, y: 0, z: 0, t: 0, block: 0, g: 40, kind: 'none' },   // 조준 광선의 첫 접점. block = 좀비 아닌 첫 차단물(건물·보스·지면)까지 거리 — 그 앞의 좀비만 '맞는다'
     stick: { active: false, x: 0, y: 0 } };                    // 가상 조이스틱 기울기(-1..1). 기울인 만큼 포신이 '돈다'(속도 제어)
   const targets = [];            // 보스 등 부위 히트 대상: { raycast(ray,maxT)→{t,part}|null, hit(part,dmg,x,y,z,dirX,dirZ,time) }
@@ -180,7 +178,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   }
 
   // 매 프레임 조준 광선(퍼짐 없음)의 첫 접점. 링·잠금 링·좀비 하이라이트(horde 유니폼)가 여기서 나온다.
-  function aim() {
+  function aim(time) {
     muzzle.getWorldPosition(_o); pitchPivot.getWorldDirection(_d); _d.negate(); _ray.set(_o, _d);
     const MAX = 140; const a = state.aim;
     const zh = horde.raycast(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, MAX, 1);
@@ -194,18 +192,19 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     if (ph && ph.timeOfImpact < block) { block = ph.timeOfImpact; kind = 'ground'; }
     let t = block;
     if (zt < block) { t = zt; kind = 'zombie'; }
-    a.t = t; a.block = block; a.kind = kind; a.g = _d.y < -1e-3 ? Math.min(MAX, -_o.y / _d.y) : MAX;
+    a.t = t; a.block = block; a.kind = kind;
+    // 감도·조준점 기준 거리 = 광선이 가슴 높이(y 1.1) 평면과 만나는 거리. 좀비·건물에 붙지 않아 요동하지 않는다.
+    a.g = _d.y < -1e-3 ? THREE.MathUtils.clamp((1.1 - _o.y) / _d.y, 6, 90) : 60;
     a.x = _o.x + _d.x * t; a.y = _o.y + _d.y * t; a.z = _o.z + _d.z * t;
-    const u = horde.uniforms; if (u.uAimO) { u.uAimO.value.copy(_o); u.uAimD.value.copy(_d); u.uAimT.value = state.showAim ? block : -1; }
-    // 링: 바닥(접점의 x,z). 하늘을 겨누면 숨김. 잠금 링: 좀비·보스 접점에만.
-    const show = state.showAim && kind !== 'none';
-    ring.visible = show; lock.visible = show && (kind === 'zombie' || kind === 'boss');
-    if (show) {
-      ring.position.set(a.x, 0.06, a.z); const rs = kind === 'zombie' || kind === 'boss' ? 0.8 : 1.0;
-      const cd = camera ? camera.position.distanceTo(ring.position) : 22; const ss = Math.max(1, cd * 0.045);   // 화면에서 늘 같은 크기로(세로 폰에서 점이 되지 않게)
-      ring.scale.setScalar(rs * ss); lock.scale.setScalar(1.1 * ss);
-      RET.color.setHex(kind === 'zombie' || kind === 'boss' ? 0xff4a3c : 0xffb347);
-      lock.position.set(a.x, a.y, a.z);
+    const u = horde.uniforms; if (u.uAimO) { u.uAimO.value.copy(_o); u.uAimD.value.copy(_d); u.uAimT.value = -1; }   // 광선 위 좀비 하이라이트도 끈다 — 잠금으로 읽힌다
+    // 2D 조준점: 가슴 평면 접점을 화면에 투영. 카메라가 조준각을 따라 도니 화면 가운데 근처에서 포신과 1:1 로 움직인다.
+    if (reticle) {
+      const on = state.showAim && camera;
+      if (on) { _hit.copy(_o).addScaledVector(_d, a.g).project(camera); }
+      const vis = on && _hit.z < 1 && Math.abs(_hit.x) < 1.2 && Math.abs(_hit.y) < 1.2;
+      reticle.style.opacity = vis ? '1' : '0';
+      reticle.classList.toggle('fire', state.firing && state.spin > 0.55); reticle.classList.toggle('hit', time - state.lastHit < 0.07);
+      if (vis) reticle.style.transform = `translate(${((_hit.x + 1) / 2 * innerWidth).toFixed(1)}px, ${((1 - _hit.y) / 2 * innerHeight).toFixed(1)}px) translate(-50%, -50%)`;
     }
   }
 
@@ -248,7 +247,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
         if (state.shots % 3 === 0) audio.hitStone();
       }
     } else if (th) {
-      state.hits++; spark(_o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
+      state.hits++; state.lastHit = time; spark(_o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, time);
       th.target.hit(th.part, 2.6, _o.x + _d.x * t, _o.y + _d.y * t, _o.z + _d.z * t, _d.x, _d.z, time);
     } else if (bh) {
       const p = bh.part; const hx = _o.x + _d.x * t, hy = _o.y + _d.y * t, hz = _o.z + _d.z * t;
@@ -259,7 +258,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (p.hp <= 0) destroyPart(bh.b, p, _d.x, _d.z, 7, time);
       if (bh.b.hp <= 0 && bh.b.alive) collapse(bh.b, _d.x, _d.z, time);
     } else if (z) {
-      state.hits++; spark(z.x, z.y, z.z, time);
+      state.hits++; state.lastHit = time; spark(z.x, z.y, z.z, time);
       let dmg = 2.6;
       for (const h of zh) {
         if (h.t > t) break;
@@ -333,7 +332,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     yawPivot.rotation.y = state.yaw;
     pitchPivot.rotation.x = state.pitch + state.recoil * 0.015 * (Math.random() - 0.5);
     yawPivot.updateWorldMatrix(true, true);
-    aim();
+    aim(time);
     // 트레이서 수명
     updateTracers(time); updateImpacts(time);
     updateRockets(dt, time);
@@ -576,5 +575,5 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       if (b.hp <= 0 && b.alive) collapse(b, 0, -1, time);
     }
   }
-  return { root, yawPivot, pitchPivot, muzzle, state, targets, hooks, update, attachInput, blastBuildings, fireSalvo, razeBuilding, spark };
+  return { root, yawPivot, pitchPivot, muzzle, state, targets, hooks, update, attachInput, blastBuildings, fireSalvo, razeBuilding, spark, setReticle };
 }
