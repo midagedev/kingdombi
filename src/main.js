@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildWorld, ROUTE, districtAt, rng, createRoutePath } from './world.js';
+import { buildWorld, ROUTE, ROAD_HALF, districtAt, rng, createRoutePath } from './world.js';
 import { createLook, LAYER_SPOT } from './look.js';
 import { createPhysics } from './physics.js';
 import { createHorde } from './horde.js';
@@ -10,6 +10,8 @@ import { createBosses } from './boss.js';
 import { createPickups } from './pickups.js';
 import { createAudio } from './audio.js';
 import { createNightlife } from './nightlife.js';
+import { createSky } from './sky.js';
+import { createGround } from './ground.js';
 import { createFires } from './fire.js';
 import { createJuice, rankOf } from './juice.js';
 import { createCine } from './cine.js';
@@ -40,15 +42,6 @@ const NIGHT = new THREE.Color(0x05060a);
 const HORIZON = new THREE.Color(0x1b1e2a);
 scene.background = NIGHT;
 scene.fog = new THREE.FogExp2(HORIZON, 0.0068);
-// 하늘: 지평선이 살짝 밝은 안개빛 → 검은 지붕선이 실루엣으로 읽힌다(느와르의 기본 문법). 카메라를 따라다닌다.
-const sky = new THREE.Mesh(new THREE.SphereGeometry(640, 32, 16), new THREE.ShaderMaterial({
-  side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { top: { value: NIGHT }, bottom: { value: HORIZON } },
-  vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: 'uniform vec3 top, bottom; varying vec3 vP; void main(){ float h = clamp(vP.y / 640.0, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, pow(h, 0.45)), 1.0); }',
-}));
-scene.add(sky);
-
 const camera = new THREE.PerspectiveCamera(58, 1, 0.3, 700);
 
 // ── 조명: 달(역광, 장그림자) + 낮은 하늘빛 + 등롱. 달·보조광·그림자 절두체는 마차를 따라간다 ──
@@ -72,27 +65,14 @@ function followLights(px, pz) {
   fill.position.set(px + 60, 50, pz + 140); fill.target.position.set(px, 0, pz - 60);
 }
 
-// 달 원반 + 달무리 (세계 레이어 — 흑백으로 눌려 종이처럼 하얗게 뜬다)
-const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(17, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
-scene.add(moonDisc);
-const haloTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); const gr = g.createRadialGradient(128, 128, 20, 128, 128, 128); gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); return new THREE.CanvasTexture(c); })();
-const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, transparent: true, depthWrite: false, fog: false }));
-halo.scale.setScalar(150); scene.add(halo);
+// 하늘(src/sky.js): 돔·별·크레이터 달·구름·먹 산. 카메라를 따라다닌다.
+const sky = createSky(scene, { night: NIGHT, horizon: HORIZON, moonDir, isMobile });
 
-// ── 지면: 비에 젖은 흙길(마차를 따라감) + 길 전체 길이의 골목 띠 ──
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x33312e, roughness: 0.68, metalness: 0.0 }));
-ground.rotation.x = -Math.PI / 2; ground.position.y = -0.03; ground.receiveShadow = true; scene.add(ground);
-// 레일(src/path.js): 마차·스폰·컬링·HUD 거리가 전부 s(진행 거리) 로 말한다. 길 띠는 구간마다 하나(코너 뒤 옆길 stub 포함), 겹치는 코너는 y 를 살짝 달리해 z-파이팅을 피한다
+// 레일(src/path.js): 마차·스폰·컬링·HUD 거리가 전부 s(진행 거리) 로 말한다.
 const path = createRoutePath();
 const sV = () => vehicle.state.s;   // 마차의 s (vehicle 은 아래서 만든다 — 호출 시점엔 있다)
-{
-  const mat = new THREE.MeshStandardMaterial({ color: 0x46433f, roughness: 0.55, metalness: 0.0 }), c = new THREE.Vector3();
-  path.segs.forEach((g, i) => {
-    const sa = g.s0 === -Infinity ? -100 : g.s0 - 8, sb = g.s1 === Infinity ? ROUTE.end + 130 : g.s1 + ROUTE.stub;   // 출발점 뒤 마을까지 · 궁궐 광장 너머까지
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(16, sb - sa), mat); path.atSeg(g, (sa + sb) / 2, 0, c);
-    m.rotation.set(-Math.PI / 2, g.th, 0, 'YXZ'); m.position.set(c.x, -0.02 - i * 0.003, c.z); m.receiveShadow = true; scene.add(m);
-  });
-}
+// 지면(src/ground.js): 젖은 흙땅(마차를 따라감, 무늬는 월드 고정) + 구간마다 바큇자국 난 길 띠
+const ground = createGround(scene, path, { roadHalf: ROAD_HALF, end: ROUTE.end, stub: ROUTE.stub });
 
 // ── 거리 등롱 둘: 실광원 예산 2. 마차가 지나치면 110m 앞으로 건너뛴다(개구리 뛰기) ──
 const lanterns = [];
@@ -400,7 +380,7 @@ function updateCamera(dt, rawDt = dt) {
     camPos.set(vpos.x + Math.sin(cineA) * R, vpos.y + H, vpos.z + Math.cos(cineA) * R); tmpV.set(vpos.x, vpos.y + (game.over ? 2.2 : 4.6), vpos.z);
     if (first) { camera.position.copy(camPos); camTarget.copy(tmpV); } else { camera.position.lerp(camPos, Math.min(1, rawDt * 2)); camTarget.lerp(tmpV, Math.min(1, rawDt * 2)); }
     camera.lookAt(camTarget);
-    sky.position.copy(camera.position); moonDisc.position.copy(camera.position).addScaledVector(moonDir, 520); moonDisc.lookAt(camera.position); halo.position.copy(camera.position).addScaledVector(moonDir, 517);
+    sky.update(camera.position, game.time, renderer.getPixelRatio());
     return;
   }
   const k = director.phase === 'ready' ? 2.2 : 9;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업
@@ -422,10 +402,8 @@ function updateCamera(dt, rawDt = dt) {
   camera.lookAt(camTarget);
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
   game.shake *= Math.exp(-dt * 4);
-  // 하늘·달은 카메라에 붙어 다닌다
-  sky.position.copy(camera.position);
-  moonDisc.position.copy(camera.position).addScaledVector(moonDir, 520); moonDisc.lookAt(camera.position);
-  halo.position.copy(camera.position).addScaledVector(moonDir, 517);
+  // 하늘·달·산은 카메라에 붙어 다닌다
+  sky.update(camera.position, game.time, renderer.getPixelRatio());
 }
 
 // 마차 근처 건물만 그린다(랜드마크는 항상). 등롱은 nightlife 가 이 플래그를 따른다.
@@ -528,7 +506,7 @@ function updateDirector(dt, time) {
   // 거리 등롱 개구리 뛰기 — 보는 쪽에 머물러야 한다. 추격전엔 마차 뒤(z 큰 쪽)가 화면이다.
   for (const l of lanterns) { const behind = sV() - l.s; if (facing.chase ? behind > 110 : behind > 30) { l.s += 110; path.at(l.s, l.lat, l.g.position); } }
   followLights(vpos.x, vpos.z);
-  ground.position.x = vpos.x; ground.position.z = vpos.z;
+  ground.update(vpos.x, vpos.z);
 }
 
 const fpsEl = $('fps'), scoreEl = $('scoreN'), killsEl = $('killN'), hpEl = $('hp'), hpFill = $('hpFill'), hpN = $('hpN'), waveEl = $('wave'), waveN = $('waveN'), waveL = $('waveL'), bombEl = $('bomb'), bombDots = $('bombDots'), contEl = $('cont');
@@ -622,7 +600,7 @@ renderer.setAnimationLoop((now) => {
   if (wantBlood && !game.bloodNight) { game.bloodNight = true; juice.banner(S.bloodNight); juice.stamp('危'); audio.thunder(); audio.setBgm('bloodnight'); }
   if (!wantBlood && game.bloodNight) { game.bloodNight = false; if (!game.over && game.cont <= 0) audio.setBgm('wave'); }
   look.state.blood += ((game.bloodNight ? 1 : 0) - look.state.blood) * Math.min(1, rawDt * 2.5);
-  fires.update(dt); juice.update(time);
+  fires.update(dt, vpos.x, vpos.z); juice.update(time);
 
   // 새벽: 恐龍을 쓰러뜨리면 밝아진다
   if ((running && time > game.dawnAt) || (game.over && game.won)) { look.state.darkness = Math.max(-0.6, look.state.darkness - rawDt * 0.05); if (!game.dawnBgm) { game.dawnBgm = true; audio.setBgm('lull'); } }   // 새벽은 엔딩 판 뒤에서도 계속 밝아진다

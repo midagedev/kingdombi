@@ -25,7 +25,7 @@ const BLUR = /* glsl */`
 const COMPOSITE = /* glsl */`
   precision highp float;
   uniform sampler2D tWorld, tSpot, tGlow, tDepth;
-  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt;
+  uniform vec2 texel; uniform float time, flash, near, far, rain, darkness, raw, blood, invert, tint, hurt, edgeK;
   varying vec2 vUv;
 
   float linDepth(vec2 uv) {
@@ -46,10 +46,10 @@ const COMPOSITE = /* glsl */`
     float d = linDepth(vUv);
     float dx = abs(linDepth(vUv + vec2(texel.x, 0.0)) - d) + abs(linDepth(vUv - vec2(texel.x, 0.0)) - d);
     float dy = abs(linDepth(vUv + vec2(0.0, texel.y)) - d) + abs(linDepth(vUv - vec2(0.0, texel.y)) - d);
-    float edge = clamp((dx + dy) / max(d * 0.10, 0.02) - 0.6, 0.0, 1.0) * (1.0 - smoothstep(90.0, 260.0, d) * 0.7) * (1.0 - smoothstep(300.0, 420.0, d));
-    // 그래픽노블 윤곽: 어두운 면엔 흰 선, 밝은 면엔 검은 선
-    float edgeTone = 1.0 - smoothstep(0.30, 0.50, ink);
-    ink = mix(ink, edgeTone, edge * 0.75);
+    float edge = clamp((dx + dy) / max(d * 0.10, 0.02) - 0.6, 0.0, 1.0) * (1.0 - smoothstep(40.0, 160.0, d) * 0.75) * (1.0 - smoothstep(220.0, 380.0, d));
+    // 윤곽(2026-09-03 재조정): 모든 모서리에 균일한 흰 선은 '색칠공부'로 읽혔다. 기본은 먹선(검정), 흰 선은 검정 위 검정 실루엣이 묻힐 때만 아주 얇게.
+    float edgeTone = mix(0.0, 0.55, 1.0 - smoothstep(0.04, 0.14, ink));
+    ink = mix(ink, edgeTone, edge * edgeK);
     // 세부 잉크선: 밝기 기울기(기와 골·창살·공포·기둥). 실루엣 밖 내부 디테일을 펜 선으로 남긴다.
     float lx = dot(texture2D(tWorld, vUv + vec2(texel.x, 0.0)).rgb, vec3(0.2126, 0.7152, 0.0722)) - dot(texture2D(tWorld, vUv - vec2(texel.x, 0.0)).rgb, vec3(0.2126, 0.7152, 0.0722));
     float ly = dot(texture2D(tWorld, vUv + vec2(0.0, texel.y)).rgb, vec3(0.2126, 0.7152, 0.0722)) - dot(texture2D(tWorld, vUv - vec2(0.0, texel.y)).rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -120,7 +120,7 @@ export function createLook(renderer, scene, camera) {
     uniforms: {
       tWorld: { value: rtWorld.texture }, tSpot: { value: rtSpot.texture }, tGlow: { value: rtGlowB.texture }, tDepth: { value: depth },
       texel: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, time: { value: 0 }, flash: { value: 0 },
-      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 },
+      near: { value: camera.near }, far: { value: camera.far }, rain: { value: 1 }, darkness: { value: 0 }, raw: { value: /dbg=depth/.test(location.search) ? 2 : /dbg=raw/.test(location.search) ? 1 : 0 }, blood: { value: 0 }, invert: { value: 0 }, tint: { value: 0.3 }, hurt: { value: 0 }, edgeK: { value: +(new URLSearchParams(location.search).get('edge') ?? 0.55) },   // ?edge=0..1 윤곽선 세기
     },
   });
   const quad = new THREE.Mesh(quadGeo, compMat);
