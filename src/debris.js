@@ -119,7 +119,7 @@ const MIST_FRAG = /* glsl */`
   void main() { vec2 q = vUv - 0.5; float r = length(q) * 2.0; float n = hash(floor(vUv * 9.0)) * 0.35;
     float a = (1.0 - smoothstep(0.25, 1.0, r + n)) * vA; if (a < 0.01) discard; gl_FragColor = vec4(uColor * a, 1.0); }
 `;
-export function createMist(scene, { count = 240, color = 0xc1121f } = {}) {
+export function createMist(scene, { count = 240, color = 0xc1121f, life = 0.55, size = 1 } = {}) {   // life·size(2026-09-04): 집 무너지는 흙먼지는 몇 초 걸리고 몇 m 크다
   const geo = new THREE.PlaneGeometry(1, 1);
   const iA = new THREE.InstancedBufferAttribute(new Float32Array(count), 1); iA.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('iA', iA);
   const mat = new THREE.ShaderMaterial({ vertexShader: MIST_VERT, fragmentShader: MIST_FRAG, uniforms: { uColor: { value: new THREE.Color(color) } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -128,13 +128,13 @@ export function createMist(scene, { count = 240, color = 0xc1121f } = {}) {
   scene.add(mesh);
   const pos = new Float32Array(count * 3), vel = new Float32Array(count * 3), born = new Float32Array(count).fill(-1e9), sz = new Float32Array(count);
   let cursor = 0; const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
-  const LIFE = 0.55;
+  const LIFE = life;
   function puff(x, y, z, n, dirX, dirZ, time) {
     for (let k = 0; k < n; k++) {
       const i = cursor; cursor = (cursor + 1) % count; const i3 = i * 3;
       pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
       vel[i3] = dirX * 2.5 + (Math.random() - 0.5) * 2; vel[i3 + 1] = 0.8 + Math.random(); vel[i3 + 2] = dirZ * 2.5 + (Math.random() - 0.5) * 2;
-      born[i] = time; sz[i] = 0.5 + Math.random() * 0.5;
+      born[i] = time; sz[i] = (0.5 + Math.random() * 0.5) * size;
     }
   }
   function update(dt, time) {

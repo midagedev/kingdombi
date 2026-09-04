@@ -162,7 +162,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
   function rainPoint(r, k, out) {
     const pa = r.p.mesh.geometry.attributes.position, box = r.p.box, h = Math.max(0.2, box.max.y - box.min.y);
     for (let t = 0; t < 6; t++) {
-      if (pa.count < 64) out.set(THREE.MathUtils.lerp(box.min.x, box.max.x, Math.random()), THREE.MathUtils.lerp(box.min.y, box.max.y, Math.random()), THREE.MathUtils.lerp(box.min.z, box.max.z, Math.random()));   // 상자 벽: 정점은 모서리뿐이라 판 안 임의점
+      if (pa.count < 64) { const g = r.p.mesh.geometry; if (!g.boundingBox) g.computeBoundingBox(); const lb = g.boundingBox; out.set(THREE.MathUtils.lerp(lb.min.x, lb.max.x, Math.random()), THREE.MathUtils.lerp(lb.min.y, lb.max.y, Math.random()), THREE.MathUtils.lerp(lb.min.z, lb.max.z, Math.random())).applyMatrix4(r.p.mesh.matrixWorld); }   // 상자 벽: 정점은 모서리뿐이라 로컬 상자 안 임의점(월드 AABB 는 비스듬한 벽에서 2 m 어긋난다)
       else out.fromBufferAttribute(pa, Math.floor(Math.random() * pa.count)).applyMatrix4(r.p.mesh.matrixWorld);
       const f = (out.y - box.min.y) / h;
       if (f > 1 - k - 0.35) return out;   // 내려오는 띠 안(위에서부터)
@@ -175,13 +175,13 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
       const pool = r.straw ? fx.straw : r.plate ? fx.clods : fx.shards;
       for (let i = 0; i < want; i++) {
         rainPoint(r, k1, _rain);
-        let ox = _rain.x - c.x, oz = _rain.z - c.z; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;   // 지붕면 중심에서 바깥(처마 쪽)으로 미끄러진다
+        let ox = _rain.x - r.b.center.x, oz = _rain.z - r.b.center.z; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;   // 집 중심에서 바깥(처마 쪽)으로 미끄러진다 — 지붕면 중심 기준이면 용마루 쪽 절반이 안쪽으로 밀린다
         if (r.plate) pool.burst(_rain.x, _rain.y, _rain.z, 1, { dirX: r.dirX * 0.4, dirY: 0.08, dirZ: r.dirZ * 0.4, spread: 0.45, power: 2.2, scale: 1, time });   // 흙벽: 제자리에서 덩이로 무너져 내린다
         else if (r.straw) pool.burst(_rain.x, _rain.y + 0.1, _rain.z, 1, { dirX: ox * 0.35 + r.dirX * 0.3, dirY: 0.35, dirZ: oz * 0.35 + r.dirZ * 0.3, spread: 0.6, power: 2.4, scale: 1, time });
         else pool.burst(_rain.x, _rain.y + 0.05, _rain.z, 1, { dirX: ox * 0.6 + r.dirX * 0.25, dirY: 0.05, dirZ: oz * 0.6 + r.dirZ * 0.25, spread: 0.35, power: 3.5, scale: 1.3, time });
       }
       r.done += want;
-      if (!r.hidden && k1 > 0.5) { r.hidden = true; r.b.hide(r.p.id); fx.dust.puff(c.x, c.y - 0.3, c.z, r.straw ? 26 : 12, r.dirX * 0.3, r.dirZ * 0.3, time); }
+      if (!r.hidden && k1 > 0.75) { r.hidden = true; r.b.hide(r.p.id); fx.dust.puff(c.x, c.y - 0.3, c.z, r.straw ? 26 : 12, r.dirX * 0.3, r.dirZ * 0.3, time); }
       if (k1 >= 1) rains.splice(k, 1);
     }
   }
@@ -190,7 +190,7 @@ export function createGun(scene, physics, horde, buildings, fx, audio, look, { p
     const c = p.center;
     if (p.sheet || p.plate) {
       const d = [p.size.x, p.size.y, p.size.z].sort((a, c2) => a - c2), area = p.sheet ? p.size.x * p.size.z : d[1] * d[2], straw = p.sheet && b.kind === 'choga';
-      rains.push({ b, p, t0: time, dirX, dirZ, straw, plate: p.plate, n: Math.round(THREE.MathUtils.clamp(area * (straw ? 9 : p.plate ? 7 : 10), 24, 260)), done: 0, hidden: false });
+      rains.push({ b, p, t0: time, dirX, dirZ, straw, plate: p.plate, n: Math.round(THREE.MathUtils.clamp(area * (straw ? 9 : p.plate ? 7 : 6), 24, 200)), done: 0, hidden: false });
       return;
     }
     b.hide(p.id);

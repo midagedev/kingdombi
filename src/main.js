@@ -195,7 +195,7 @@ const fx = {
   decals: createDecals(scene, { count: 600, color: 0x8e0c16 }),
   brass: createDebris(scene, { count: 240, layer: LAYER_SPOT, color: 0xd9a64a, size: 0.08, gravity: -22, bounce: 0.35, life: 1.4 }),   // 탄피
   straw: createDebris(scene, { count: 600, color: 0xb59a52, dims: [0.06, 0.03, 0.55], gravity: -7, drag: 1.1, bounce: 0.05, life: 3.4 }),   // 초가 이엉: 길쭉한 짚, 떠서 내려앉는다
-  dust: createMist(scene, { count: 200, color: 0x8a7a5e }),   // 지붕·벽 무너질 때 흙먼지
+  dust: createMist(scene, { count: 200, color: 0x8a7a5e, life: 2.4, size: 2.5 }),   // 지붕·벽 무너질 때 흙먼지
   clods: createDebris(scene, { count: 500, color: 0x8b7758, size: 0.17, gravity: -28, bounce: 0.12, life: 2.4 }),   // 흙벽 덩이
 };
 
