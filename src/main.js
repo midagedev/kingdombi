@@ -410,7 +410,8 @@ function updateCamera(dt, rawDt = dt) {
     sky.update(camera.position, game.time, renderer.getPixelRatio());
     return;
   }
-  const k = director.phase === 'ready' ? 2.2 : 16;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업. 게임 중 16: 카메라가 커서 뒤를 오래 흐르지 않게(전 9)
+  // 보스 진입 1.2초는 느리게(3) — 화각이 dt*3 으로 벌어지는 동안 위치가 0.17초에 꽂히면 돌리줌처럼 어긋난다. 둘을 같은 속도로 태워 포수석까지 내려앉게 한다.
+  const k = director.phase === 'ready' ? 2.2 : (bosses.active && game.time - director.stopT0 < 1.2) ? 3 : 16;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업. 게임 중 16: 카메라가 커서 뒤를 오래 흐르지 않게(전 9)
   const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : bosses.active ? (P ? cam.bossPort : cam.bossLand) : (P ? cam.port : cam.land);
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
   // 카메라는 포신이 아니라 **커서**를 따른다(2026-09-03). 조준선이 화면에 고정된 구조에서 카메라가 포신을 보면 커서→포신→카메라→커서 되먹임으로 포신이 끝까지 돌아갔다(실측 NDC 0.72 커서에 yaw −1.28).
