@@ -197,9 +197,10 @@ const BODY_FRAG = /* glsl */`
     if (hair) alb = vec3(0.035);
     if (foot) alb = vec3(0.16, 0.13, 0.10);
     // 마른 피: 개체(vPhase)마다 다른 얼룩. 가슴 앞·소매 끝·치마 조각에 검붉게, 입가·손은 항상
-    float cell = hash3(floor(vModel * 9.0 + vPhase * 31.0));
-    float stain = smoothstep(0.62, 0.72, cell) * (1.0 - float(head || hair));
-    if (vBone == 1.0 && vModel.z > 0.05) stain = max(stain, smoothstep(0.45, 0.6, cell));   // 가슴 앞은 더 많이
+    vec3 sc = vModel * 9.0 + vPhase * 31.0; vec3 cid = floor(sc); vec3 f = fract(sc) - 0.5;
+    float cell = hash3(cid), blob = smoothstep(0.5, 0.2, length(f) / (0.45 + 0.4 * hash3(cid + 7.0)));   // 둥근 얼룩(네모 셀은 상자로 읽힌다)
+    float stain = step(0.66, cell) * blob * (1.0 - float(head || hair));
+    if (vBone == 1.0 && vModel.z > 0.05) stain = max(stain, step(0.5, cell) * blob);   // 가슴 앞은 더 많이
     if (hand) stain = max(stain, 0.7);
     if (head && vModel.y < 1.7 && vModel.z > 0.05) stain = max(stain, 0.8);                // 입가·턱
     alb = mix(alb, vec3(0.30, 0.03, 0.03), stain * (0.75 + 0.25 * hash3(vModel * 3.0)));
