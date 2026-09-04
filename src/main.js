@@ -388,6 +388,10 @@ const cam = {
   land: { h: 7, d: 14.0, look: 32, drop: 2.0 }, port: { h: 10.5, d: 20, look: 28, drop: 3.4 },
   // 추격 카메라(2026-09-03 라이트건 개편): 5.5/14/30 → 4.5/11/24. 정밀 조준이 필요 없어졌으니 낮고 가깝게 — 앞줄 좀비가 화면 높이의 1/4 로 커진다(전 1/10). 3.6 까지 내리면 로켓 포드가 길 가운데를 가린다.
   chaseLand: { h: 4.5, d: 11, look: 24, drop: 1.9 }, chasePort: { h: 6, d: 13, look: 22, drop: 2.2 },
+  // 보스전만 1인칭(2026-09-04): 마차가 서 있고 표적이 하나뿐인 국면이라 시점을 포수석(눈높이 = camBase −0.5 ≒ 갑판 위 2.7 m)으로 내린다.
+  // 화각은 이때만 넓힌다(34/44 → 54/64) — 巨人·恐龍이 코앞에서 화면을 채워야 하고, 망원으로는 덩치가 잘려 안 보였다.
+  // drop 이 음수 = 시선을 위로 — 巨人 은 17 m 앞에서 15 m 높이라, 내려다보면 가슴 쇠판·코어(약점 전부)가 화면 위로 잘린다.
+  bossLand: { h: 0.35, d: 2.0, look: 30, drop: -4.5, fov: 54 }, bossPort: { h: 0.35, d: 2.0, look: 26, drop: -4.0, fov: 62 },
 };
 // 건물 컬링 창(m). window.__kb.cull 로 라이브 튠. 2026-09-03 실측(1280×720, 발사 없음): 옛 추격 창(뒤 170·앞 60·그림자 전부)은 기와 골목 1623 콜·육조거리 1524.
 // 뒤 120 → 1281 (화면 차이는 맨 위 지붕선 한 줄) · 앞 20(카메라 뒤 — 어차피 절두체 밖, 그림자만 냈다) · 뒤 70 m 너머 그림자 끔 → 1057. 대치 창은 그대로(70/60).
@@ -407,7 +411,7 @@ function updateCamera(dt, rawDt = dt) {
     return;
   }
   const k = director.phase === 'ready' ? 2.2 : 16;   // 코인 직후 1.6초: 낮은 궤도에서 게임 구도로 크레인 업. 게임 중 16: 카메라가 커서 뒤를 오래 흐르지 않게(전 9)
-  const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : (P ? cam.port : cam.land);
+  const C = facing.chase ? (P ? cam.chasePort : cam.chaseLand) : bosses.active ? (P ? cam.bossPort : cam.bossLand) : (P ? cam.port : cam.land);
   camBase.set(vpos.x, vpos.y + 3.2, vpos.z);
   // 카메라는 포신이 아니라 **커서**를 따른다(2026-09-03). 조준선이 화면에 고정된 구조에서 카메라가 포신을 보면 커서→포신→카메라→커서 되먹임으로 포신이 끝까지 돌아갔다(실측 NDC 0.72 커서에 yaw −1.28).
   // 커서 추종 진폭(2026-09-03 재조정 0.5/0.15 → 0.22/0.06): 커서를 밀면 카메라가 함께 돌아 조준점 아래 세계가 미끄러지고, 손을 떼도 카메라가 0.3초 더 흘러 '조준점이 제멋대로'로 느껴졌다
@@ -427,8 +431,10 @@ function updateCamera(dt, rawDt = dt) {
   camera.rotation.z += (Math.random() - 0.5) * r * 0.01;
   // 카메라 감각(2026-09-03): 손떨림 수준의 미세 흔들림(위치만 — 시선은 커서가 정한다) + 폭발·충격 때 화각이 살짝 벌어진다
   camera.position.x += Math.sin(game.time * 1.3) * 0.02; camera.position.y += Math.sin(game.time * 1.7 + 1.0) * 0.015;
-  const baseFov = innerWidth > innerHeight ? 34 : 44, fov = baseFov + Math.min(6, game.shake * 3.5);
-  if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  const baseFov = C.fov ?? (innerWidth > innerHeight ? 34 : 44), fov = baseFov + Math.min(6, game.shake * 3.5);
+  // 화각은 쫓아간다(1인칭 진입에서 34→54 가 한 프레임에 튀면 렌즈가 부러진 것처럼 보인다)
+  const nf = camera.fov + (fov - camera.fov) * Math.min(1, dt * 3);
+  if (Math.abs(camera.fov - nf) > 0.01) { camera.fov = nf; camera.updateProjectionMatrix(); }
   game.shake *= Math.exp(-dt * 4);
   // 하늘·달·산은 카메라에 붙어 다닌다
   sky.update(camera.position, game.time, renderer.getPixelRatio());
