@@ -3,8 +3,8 @@
 import * as THREE from 'three';
 import { LAYER_SPOT } from './look.js';
 
-export function createDebris(scene, { count = 700, layer = 0, color = 0x9a9a9a, size = 0.18, gravity = -22, bounce = 0.35, life = 3.5 } = {}) {
-  const geo = new THREE.BoxGeometry(size, size * 0.45, size * 1.3);
+export function createDebris(scene, { count = 700, layer = 0, color = 0x9a9a9a, size = 0.18, dims = null, gravity = -22, bounce = 0.35, life = 3.5, drag = 0 } = {}) {
+  const geo = dims ? new THREE.BoxGeometry(...dims) : new THREE.BoxGeometry(size, size * 0.45, size * 1.3);   // dims: 짚처럼 길쭉한 조각. drag: 공기 저항(1/s) — 가벼운 것은 떠서 내려앉는다
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0 });
   if (layer === LAYER_SPOT) { mat.emissive = new THREE.Color(color); mat.emissiveIntensity = 0.7; }
   const mesh = new THREE.InstancedMesh(geo, mat, count);
@@ -39,6 +39,7 @@ export function createDebris(scene, { count = 700, layer = 0, color = 0x9a9a9a, 
       if (age > life) { if (age < life + 1) { m.makeScale(0, 0, 0); mesh.setMatrixAt(i, m); } continue; }
       const i3 = i * 3;
       vel[i3 + 1] += gravity * dt;
+      if (drag) { const f = Math.max(0, 1 - drag * dt); vel[i3] *= f; vel[i3 + 1] *= f; vel[i3 + 2] *= f; }
       pos[i3] += vel[i3] * dt; pos[i3 + 1] += vel[i3 + 1] * dt; pos[i3 + 2] += vel[i3 + 2] * dt;
       if (pos[i3 + 1] < 0.04) { pos[i3 + 1] = 0.04; vel[i3 + 1] *= -bounce; vel[i3] *= 0.5; vel[i3 + 2] *= 0.5; rv[i3] *= 0.3; rv[i3 + 2] *= 0.3; }
       rot[i3] += rv[i3] * dt; rot[i3 + 1] += rv[i3 + 1] * dt; rot[i3 + 2] += rv[i3 + 2] * dt;

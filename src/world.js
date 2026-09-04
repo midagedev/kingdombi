@@ -119,6 +119,10 @@ function buildingRecord(kind, root, scene) {
   for (const p of partInfo) {
     const h = (p.center.y - bounds.min.y) / Math.max(1e-3, bounds.max.y - bounds.min.y);
     p.hp = kind === 'prop' ? 1.5 + Math.cbrt(p.volume) * 3 : 4 + Math.cbrt(p.volume) * 12 * (h > 0.6 ? 0.5 : 1);
+    // 지붕면(2026-09-04): 위쪽의 넓은 판(기와 지붕면 4장·초가 이엉 표면·처마 띠)은 강체로 떨어지지 않는다 — 기와는 용마루에서 처마로 쏟아지고 이엉은 짚으로 흩어진다(gun.js destroyPart)
+    p.sheet = kind !== 'prop' && !p.mesh.isInstancedMesh && h > 0.55 && Math.min(p.size.x, p.size.z) > 1.2 && p.size.x * p.size.z > 3;
+    // 얇은 판(흙벽·회벽·널판): 가장 얇은 변 0.35 m 미만이고 나머지 두 변이 1 m 넘는 부재는 판째로 넘어지지 않고 흙덩이로 무너진다(plate). 기둥·도리 같은 긴 목재는 그대로 강체 조각.
+    { const d = [p.size.x, p.size.y, p.size.z].sort((a, b) => a - b); p.plate = kind !== 'prop' && !p.mesh.isInstancedMesh && !p.sheet && d[0] < 0.35 && d[1] > 1.0 && d[2] > 1.0; }
   }
   const center = bounds.getCenter(new THREE.Vector3());
   return {
