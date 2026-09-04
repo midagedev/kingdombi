@@ -21,7 +21,7 @@ const BONES = [
   { id: 10, size: [0.13, 0.46, 0.13], at: [0.11, 0.23, 0] },
 ];
 
-function tag(g, id) { if (g.index) g = g.toNonIndexed(); const n = g.attributes.position.count; g.setAttribute("aBone", new THREE.Float32BufferAttribute(new Float32Array(n).fill(id), 1)); return g; }
+function tag(g, id, acc = 0) { if (g.index) g = g.toNonIndexed(); const n = g.attributes.position.count; g.setAttribute("aBone", new THREE.Float32BufferAttribute(new Float32Array(n).fill(id + acc * 16), 1)); return g; }   // aBone = 뼈 + 부속×16(속성 한도 16개라 묶는다). acc: 0 몸 · 1 갓(iLook 1 만) · 2 풀어진 긴 머리(iLook 2 만) · 3 뒷머리(항상, 검정)
 // 좀비 본체 재조형(2026-09-03 AAA 룩): 상자 11개 → 마디 원기둥·관절 구·굽은 몸통·두개골+턱·찢어진 옷·머리카락. 뼈 중심·관절 축(animate/deadPose/bonePivot 의 0.46·0.9·1.05·1.22·1.54·1.58)은 그대로.
 // 광선 판정 캡슐(r 0.58 · h 1.95)도 그대로. 한 마리 ≈ 900 tri.
 const mv = (g, x, y, z) => { g.translate(x, y, z); return g; };
@@ -29,7 +29,7 @@ const sph = (r, sx = 1, sy = 1, sz = 1, w = 7, h = 5) => { const g = new THREE.S
 const seg = (rTop, rBot, h) => new THREE.CylinderGeometry(rTop, rBot, h, 8, 1);
 function buildZombieGeometry() {
   const parts = [];
-  const add = (g, id) => parts.push(tag(g, id));
+  const add = (g, id, acc = 0) => parts.push(tag(g, id, acc));
   // 골반 0: 눌린 구 + 늘어진 옷 조각 5장(양면 재질)
   add(mv(sph(0.17, 1.0, 0.62, 0.7), 0, 0.98, 0), 0);
   for (let k = 0; k < 5; k++) { const a = k * 1.257 + 0.3, l = 0.28 + (k % 2) * 0.14; const pl = new THREE.PlaneGeometry(0.11, l, 1, 2); pl.translate(0, -l / 2, 0); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.17, 0.95, Math.sin(a) * 0.15); add(pl, 0); }
@@ -40,7 +40,7 @@ function buildZombieGeometry() {
   // 머리 2: 두개골 + 아래턱 + 뒷머리 머리카락 조각 3
   add(mv(sph(0.115, 0.92, 1.05, 1.0, 8, 6), 0, 1.75, 0.02), 2);
   add(mv(new THREE.BoxGeometry(0.13, 0.055, 0.12), 0, 1.635, 0.06), 2);
-  for (let k = 0; k < 3; k++) { const a = Math.PI + (k - 1) * 0.7, l = 0.22 + k * 0.05; const pl = new THREE.PlaneGeometry(0.07, l, 1, 2); pl.translate(0, -l / 2, 0); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.09, 1.8, Math.sin(a) * 0.09 + 0.02); add(pl, 2); }
+  for (let k = 0; k < 3; k++) { const a = Math.PI + (k - 1) * 0.7, l = 0.22 + k * 0.05; const pl = new THREE.PlaneGeometry(0.07, l, 1, 2); pl.translate(0, -l / 2, 0); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.09, 1.8, Math.sin(a) * 0.09 + 0.02); add(pl, 2, 3); }
   // 팔: 위팔(어깨 구 1.54 관절) · 아래팔(팔꿈치 구 1.22 관절 + 손)
   for (const sx of [-1, 1]) {
     add(mv(sph(0.06, 1, 1, 1, 6, 4), sx * 0.27, 1.54, 0), sx < 0 ? 3 : 4); add(mv(seg(0.052, 0.045, 0.3), sx * 0.27, 1.38, 0), sx < 0 ? 3 : 4);
@@ -51,14 +51,11 @@ function buildZombieGeometry() {
     add(mv(sph(0.06, 1, 1, 1, 6, 4), sx * 0.11, 0.46, 0), sx < 0 ? 9 : 10); add(mv(seg(0.055, 0.048, 0.42), sx * 0.11, 0.24, 0), sx < 0 ? 9 : 10);
     add(mv(new THREE.BoxGeometry(0.1, 0.06, 0.2), sx * 0.11, 0.03, 0.04), sx < 0 ? 9 : 10);
   }
-  // 케데헌 데몬 문법: 뿔 한 쌍(머리), 가슴 코어(발광 팔면체), 발톱(전완 끝 웨지)
-  for (const sx of [-1, 1]) {
-    const horn = new THREE.ConeGeometry(0.035, 0.22, 5); horn.translate(0, 0.11, 0); horn.rotateZ(-sx * 0.55); horn.translate(sx * 0.09, 1.86, 0.0);
-    add(horn, 2);
-    const claw = new THREE.ConeGeometry(0.045, 0.16, 4); claw.rotateX(Math.PI); claw.translate(sx * 0.27, 0.86, 0.02);
-    add(claw, sx < 0 ? 5 : 6);
-  }
-  const core = new THREE.OctahedronGeometry(0.085, 0); core.translate(0, 1.34, 0.13); add(core, 1);
+  // 조선 좀비(2026-09-04): 뿔·발톱·가슴 코어(데몬 문법)를 걷어냈다 — 자주색 발광체는 외계인으로 읽혔다. 대신 갓(iLook 1)과 풀어진 긴 머리(iLook 2)를 인스턴스마다 켜고 끈다(BODY_VERT 가 안 쓰는 부속을 머리 관절로 접는다).
+  { const brim = new THREE.CylinderGeometry(0.24, 0.24, 0.012, 14, 1); brim.translate(0, 1.845, 0.01); add(brim, 2, 1);
+    const crown = new THREE.CylinderGeometry(0.085, 0.095, 0.14, 10, 1); crown.translate(0, 1.92, 0.01); add(crown, 2, 1); }
+  for (let k = 0; k < 6; k++) { const a = Math.PI + (k - 2.5) * 0.5, l = 0.42 + (k % 3) * 0.08; const pl = new THREE.PlaneGeometry(0.075, l, 1, 3); pl.translate(0, -l / 2, 0); pl.rotateZ((k % 2 ? 1 : -1) * 0.12); pl.rotateY(-a); pl.translate(Math.cos(a) * 0.1, 1.82, Math.sin(a) * 0.1 + 0.02); add(pl, 2, 2); }
+  { const fr = new THREE.PlaneGeometry(0.06, 0.3, 1, 2); fr.translate(0.05, 1.7, 0.12); fr.rotateY(0.3); add(fr, 2, 2); }   // 얼굴 앞으로 흘러내린 머리 한 가닥
   // 수동 병합 (BufferGeometryUtils 없이: 속성 셋이 동일)
   const total = parts.reduce((a, g) => a + g.attributes.position.count, 0);
   const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), bone = new Float32Array(total);
@@ -77,15 +74,15 @@ function buildZombieGeometry() {
 
 // 정점 셰이더 공통부: 뼈 계층 절차 애니메이션. uDead=1 이면 널브러진 자세(시체 인스턴스용).
 const ANIM_GLSL = /* glsl */`
-  attribute float aBone;
+  attribute float aBone;    // 뼈 + 부속×16 (부속: 1 갓 · 2 긴 머리 · 3 뒷머리)
   attribute float iPhase;   // 개체 위상
   attribute float iSpeed;   // 걸음 주파수 배율
   attribute float iHit;     // 피격 시각
-  attribute float iType;    // 0 보통 1 거대 2 폭탄 3 질주
+  attribute float iType;    // (0 보통 1 거대 2 폭탄 3 질주) + 차림×4 (차림: 0 맨머리 · 1 갓 · 2 풀어진 머리)
   attribute vec2 iHitInfo;  // 마지막 피격: x = 좌우(−1..1, 모델 기준) · y = 높이(0..2 m)
   attribute float iGone;    // 잃은 뼈 비트마스크(2 머리 · 3/5 왼팔 · 4/6 오른팔)
   attribute float iWind;    // 덤벼들기 웅크림 시작 시각(0 = 아님) — 붉게 웅크리다 튄다(2026-09-03 掃 루프)
-  varying float vWind;
+  varying float vWind; varying float vAcc; varying float vPhase;
   uniform float uTime; uniform float uDead;
   float goneBit(float bone) { return step(1.0, mod(floor(iGone / pow(2.0, bone)), 2.0)); }   // 2의 거듭제곱 나눗셈은 float 에서 정확 — 반올림을 넣으면 아래 비트가 위로 샌다
   vec3 bonePivot(float bone) { if (bone == 2.0) return vec3(0.0, 1.58, 0.0); if (bone == 3.0 || bone == 5.0) return vec3(-0.27, 1.54, 0.0); return vec3(0.27, 1.54, 0.0); }
@@ -161,10 +158,12 @@ const ANIM_GLSL = /* glsl */`
 
 const BODY_VERT = ANIM_GLSL + /* glsl */`
   void main() {
-    vBone = aBone; vHit = iHit; vType = iType; vMark = aimMark();
+    float acc = floor(aBone / 16.0), bone = aBone - acc * 16.0, look = floor(iType / 4.0), ty = iType - look * 4.0;
+    vBone = bone; vHit = iHit; vType = ty; vMark = aimMark(); vAcc = acc; vPhase = iPhase;
     vWind = (iWind > 0.0 && uDead < 0.5) ? clamp((uTime - iWind) * 0.72, 0.0, 1.0) : 0.0;
-    vec3 p = uDead > 0.5 ? deadPose(position, aBone) : animate(position, aBone);
-    if (aBone >= 2.0 && aBone <= 6.0) p = mix(p, uDead > 0.5 ? bonePivot(aBone) - vec3(0.0, 0.9, 0.0) : bonePivot(aBone), goneBit(aBone));   // 잃은 사지는 관절점으로 접혀 사라진다
+    vec3 p = uDead > 0.5 ? deadPose(position, bone) : animate(position, bone);
+    float hideAcc = ((acc == 1.0 && look != 1.0) || (acc == 2.0 && look != 2.0)) ? 1.0 : 0.0;   // 이 개체가 안 쓰는 갓·긴 머리는 접는다
+    if (bone >= 2.0 && bone <= 6.0) p = mix(p, uDead > 0.5 ? bonePivot(bone) - vec3(0.0, 0.9, 0.0) : bonePivot(bone), max(goneBit(bone), hideAcc));   // 잃은 사지는 관절점으로 접혀 사라진다
     float shred = exp(-(uTime - iHit) * 16.0) * (1.0 - uDead);
     p.xz += vec2(sin(uTime * 190.0 + position.y * 31.0), cos(uTime * 163.0 + position.x * 27.0)) * 0.06 * shred;
     vModel = position;
@@ -175,24 +174,40 @@ const BODY_VERT = ANIM_GLSL + /* glsl */`
   }
 `;
 
-// 몸체: 잉크 실루엣. 위에서 오는 달빛만 아주 약하게 형태를 남긴다.
+// 몸체(2026-09-04 조선 좀비): 흰 삼베옷 + 창백한 살 + 검은 머리/갓 + 마른 피. 잉크 커브 앞의 명도라 옷은 밝은 회색, 피는 검붉게 나온다.
+//   전엔 0.08 먹색 실루엣 하나였다 — 옷이 없으니 사람이었던 것으로 읽히지 않았다.
 const BODY_FRAG = /* glsl */`
   precision highp float;
   uniform vec3 uMoonDir; uniform float uTime; uniform float uBolt;
-  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying vec3 vWorld;
+  varying vec3 vModel; varying vec3 vNormalW; varying float vBone; varying float vHit; varying vec3 vWorld; varying float vAcc; varying float vPhase; varying float vType;
+  float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
   void main() {
     vec3 n = normalize(vNormalW);
     float top = max(0.0, dot(n, uMoonDir));
     vec3 v = normalize(cameraPosition - vWorld);
-    float rim = pow(1.0 - max(0.0, dot(n, v)), 3.0);        // 프레넬 림 — 전열이 검은 덩어리가 아닌 '몸'으로 읽힌다(라이트 0)
+    float rim = pow(1.0 - max(0.0, dot(n, v)), 3.0);
     float hit = exp(-(uTime - vHit) * 14.0);
     float bolt = exp(-(uTime - uBolt) * 3.5);
-    vec3 c = vec3(0.08) + top * 0.18 + rim * 0.28 + hit * 0.65 + bolt * 0.55;   // 기본 0.02→0.08(2026-09-04): 잉크 커브의 발(toe) 아래라 길과 한 덩어리였다. 번개(uBolt)엔 종이처럼 하얘진다   // 피격 순간 실루엣이 종이처럼 하얘진다(0.9→0.65: 떼 전체가 깜빡이는 소음을 줄임)
+    // 재질: 갓·머리카락은 검정, 머리(두개골·턱)와 손은 살, 발은 짚신, 나머지는 삼베옷
+    bool hair = vAcc > 0.5, head = vBone == 2.0 && !hair;
+    bool hand = (vBone == 5.0 || vBone == 6.0) && vModel.y < 0.93;
+    bool foot = (vBone == 9.0 || vBone == 10.0) && vModel.y < 0.08;
+    vec3 alb = vec3(0.70, 0.66, 0.58);                                   // 삼베
+    if (head || hand) alb = vec3(0.34, 0.37, 0.35);                      // 달빛에 바랜 죽은 살
+    if (hair) alb = vec3(0.035);
+    if (foot) alb = vec3(0.16, 0.13, 0.10);
+    // 마른 피: 개체(vPhase)마다 다른 얼룩. 가슴 앞·소매 끝·치마 조각에 검붉게, 입가·손은 항상
+    float cell = hash3(floor(vModel * 9.0 + vPhase * 31.0));
+    float stain = smoothstep(0.62, 0.72, cell) * (1.0 - float(head || hair));
+    if (vBone == 1.0 && vModel.z > 0.05) stain = max(stain, smoothstep(0.45, 0.6, cell));   // 가슴 앞은 더 많이
+    if (hand) stain = max(stain, 0.7);
+    if (head && vModel.y < 1.7 && vModel.z > 0.05) stain = max(stain, 0.8);                // 입가·턱
+    alb = mix(alb, vec3(0.30, 0.03, 0.03), stain * (0.75 + 0.25 * hash3(vModel * 3.0)));
+    vec3 c = alb * (0.30 + top * 0.70) + rim * 0.14 + hit * 0.65 + bolt * 0.55;            // 피격 순간 종이처럼 하얘진다 · 번개엔 온몸이 흰빛
     gl_FragColor = vec4(c, 1.0);
   }
 `;
 
-// 발광(스팟 레이어): 보라 눈 + 핏줄. 케데헌 데몬 감각의 보랏빛 문양.
 const GLOW_FRAG = /* glsl */`
   precision highp float;
   uniform float uTime; uniform vec3 uColor; uniform vec3 uBlood; uniform float uBolt; uniform float uDead;
@@ -205,8 +220,7 @@ const GLOW_FRAG = /* glsl */`
     float camD = length(cameraPosition - vWorld);
     vec3 n = normalize(vNormalW), v = normalize(cameraPosition - vWorld);
     float rim = pow(1.0 - max(0.0, dot(n, v)), 1.6);
-    // 자주색 림(2026-09-04): 모든 산 좀비의 가장자리가 은은히 빛난다 — 잉크 커브 뒤에 더해지는 글로우라 화면이 아무리 어두워도 실루엣이 읽힌다. 70 m 너머는 눈만.
-    g += rim * 0.7 * (1.0 - uDead) * (1.0 - smoothstep(35.0, 70.0, camD));
+    // (자주색 림은 뺐다 — 외계인으로 읽혔다. 가시성은 흰 삼베옷(BODY_FRAG)이 맡는다)
     // 번개(uBolt = 마지막 번개 시각): 떼 전체가 흰빛으로 확 드러나고 0.5초에 걸쳐 잦아든다
     float bolt = exp(-(uTime - uBolt) * 3.5);
     g += bolt * (0.5 + rim * 1.6); col = mix(col, vec3(0.92, 0.88, 1.0), bolt * 0.75);
@@ -215,21 +229,15 @@ const GLOW_FRAG = /* glsl */`
       // 눈: 머리 전면(+z) 두 점
       float front = smoothstep(0.08, 0.12, vModel.z);
       float e1 = length(vModel.xy - vec2(-0.055, 1.75)), e2 = length(vModel.xy - vec2(0.055, 1.75));
-      g += front * (smoothstep(eyeR, 0.02, e1) + smoothstep(eyeR, 0.02, e2)) * 2.2;
+      float eyes = front * (smoothstep(eyeR, 0.02, e1) + smoothstep(eyeR, 0.02, e2));
+      g += eyes * 1.1; col = mix(col, vec3(0.92, 0.94, 0.86), eyes);   // 흐린 흰 눈알 — 멀리선 이 두 점만 남는다
     }
-    // 가슴 코어: 팔면체 표면 전체가 빛난다(모델 좌표로 판정)
-    if (vBone == 1.0 && length(vModel - vec3(0.0, 1.34, 0.13)) < 0.1) g += 2.0 * (0.7 + 0.3 * sin(uTime * 2.5 + vModel.x * 40.0));
     if (vType == 2.0) {
       // 폭탄 좀비: 배(몸통 앞면)가 붉게 달아오르며 점점 빠르게 박동
       float belly = smoothstep(0.30, 0.08, length(vModel.xy - vec2(0.0, 1.22))) * smoothstep(0.06, 0.12, vModel.z);
       float beat = 0.6 + 0.4 * pow(abs(sin(uTime * 5.0 + vModel.y)), 6.0);
-      if (vBone == 1.0 || vBone == 0.0) { g += belly * 2.4 * beat; col = mix(uColor, uBlood, belly * 1.5); }
+      if (vBone == 1.0 || vBone == 0.0) { g += belly * 2.4 * beat; col = mix(col, vec3(1.0, 0.42, 0.08), belly * 1.5); }   // 불씨 주황 — 자주색은 외계인
     }
-    // 핏줄: 몸통·팔·다리 표면의 가느다란 줄무늬 (모델 공간 노이즈)
-    float veins = sin(vModel.y * 38.0 + sin(vModel.x * 23.0 + vModel.z * 17.0) * 3.0 + uTime * 2.0);
-    veins = smoothstep(0.90, 0.99, veins) * (1.0 - smoothstep(26.0, 58.0, camD));   // 먼 좀비는 눈만 남은 실루엣 — 화면 뒤쪽이 반짝이지 않는다
-    float pulse = 0.55 + 0.45 * sin(uTime * 3.0 + vModel.y * 2.0);
-    if (vBone != 2.0) g += veins * 0.55 * pulse;
     float hit = exp(-(uTime - vHit) * 12.0);
     g += hit * 1.2;
     // 조준선 위의 좀비: 호박색 림 — '지금 쏘면 이놈이 맞는다'
@@ -247,7 +255,7 @@ const DEPTH_FRAG = /* glsl */`
   void main() { gl_FragColor = packDepthToRGBA(gl_FragCoord.z); }
 `;
 
-export const ZOMBIE_COLOR = new THREE.Color(0xb04cff);
+export const ZOMBIE_COLOR = new THREE.Color(0xd8cfc0);   // 2026-09-04: 자주색(0xb04cff) → 뼛빛. 피격 섬광·눈빛의 바탕색
 
 export function createHorde(scene, physics, {
   count = 320, spawn, target, buildings, path,
@@ -262,6 +270,7 @@ export function createHorde(scene, physics, {
   const iHitInfo = new THREE.InstancedBufferAttribute(new Float32Array(N * 2), 2); iHitInfo.setUsage(THREE.DynamicDrawUsage);
   const iWind = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iWind.setUsage(THREE.DynamicDrawUsage);
   const iGone = new THREE.InstancedBufferAttribute(new Float32Array(N), 1); iGone.setUsage(THREE.DynamicDrawUsage);
+  const look = new Uint8Array(N);   // 0 맨머리 · 1 갓 · 2 풀어진 머리 — iType 에 ×4 로 묶어 올린다
   geo.setAttribute('iPhase', iPhase); geo.setAttribute('iSpeed', iSpeed); geo.setAttribute('iHit', iHit); geo.setAttribute('iType', iType); geo.setAttribute('iHitInfo', iHitInfo); geo.setAttribute('iGone', iGone); geo.setAttribute('iWind', iWind);
 
   const uniforms = { uTime: { value: 0 }, uDead: { value: 0 }, uMoonDir: { value: new THREE.Vector3(0.3, 1, 0.2).normalize() }, uColor: { value: ZOMBIE_COLOR }, uBlood: { value: new THREE.Color(0xff2020) }, uBolt: { value: -100 }, uAimO: { value: new THREE.Vector3() }, uAimD: { value: new THREE.Vector3(0, 0, -1) }, uAimT: { value: 0 } };
@@ -336,7 +345,8 @@ export function createHorde(scene, physics, {
     speed[i] = THREE.MathUtils.lerp(T.speed[0], T.speed[1], Math.random());   // 킹덤 좀비는 빠르다
     scale[i] = THREE.MathUtils.lerp(T.scale[0], T.scale[1], Math.random());
     alive[i] = 1; wind[i] = 0; iWind.setX(i, 0); gone[i] = 0; iGone.setX(i, 0);
-    iPhase.setX(i, Math.random()); iSpeed.setX(i, speed[i] / (8 * scale[i])); iType.setX(i, ty);
+    iPhase.setX(i, Math.random()); iSpeed.setX(i, speed[i] / (8 * scale[i])); 
+    { const r = Math.random(); look[i] = ty === 1 ? (r < 0.6 ? 2 : 0) : r < 0.2 ? 1 : r < 0.7 ? 2 : 0; iType.setX(i, ty + look[i] * 4); }   // 갓 20% · 풀어진 머리 50% · 맨머리 30%(거대형은 갓 없이)
     iSpeed.needsUpdate = true; iType.needsUpdate = true;
     respawnAt[i] = 0;
   }
@@ -550,7 +560,7 @@ export function createHorde(scene, physics, {
     if (cc === 'impale') stats.impaled++;
     respawnAt[i] = time + 2.5 + Math.random() * 4;
     const c = physics.spawnCorpse({ x: px[i], y: py[i], z: pz[i] }, { x: dirX * force * 0.35 + vx[i] * 0.3, y: force * (0.08 + Math.random() * 0.12), z: dirZ * force * 0.35 + vz[i] * 0.3 }, yaw[i], time, scale[i]);
-    cHit.setX(c.slot, time); cType.setX(c.slot, type[i] === 2 ? 0 : type[i]); cType.needsUpdate = true; corpseScale[c.slot] = scale[i]; cGone.setX(c.slot, gone[i]);
+    cHit.setX(c.slot, time); cType.setX(c.slot, (type[i] === 2 ? 0 : type[i]) + look[i] * 4); cType.needsUpdate = true; corpseScale[c.slot] = scale[i]; cGone.setX(c.slot, gone[i]);
     if (type[i] === 2) hooks.onExplode?.(px[i], pz[i], time);
     m.makeScale(0, 0, 0); body.setMatrixAt(i, m);
   }
